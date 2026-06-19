@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Algoritmo di Forza Relativa a Rapporto identico al 100% al tuo Excel.")
+st.write("Sincronizzato eToro - Calendari intermarket allineati per data al 100% con logica geometrica.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,19 +97,22 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- TRADUZIONE LETTERALE DELLA FORMULA EXCEL A RAPPORTO DI FORZA RELATIVA ---
-def calcola_fr_rapporto(etf_series, bench_series, bars):
+# --- FORMULA INTERMARKET ALLINEATA AL 100% SU GIORNI CONDIVISI ---
+def calcola_fr_rapporto_blindato(etf_series, bench_series, bars):
     try:
-        if len(etf_series) <= bars or len(bench_series) <= bars: return 0
-        etf_now = etf_series.iloc[-1]
-        etf_past = etf_series.iloc[-(bars + 1)]
+        # Allineamento rigido delle date (Inner Join): tiene solo i giorni in cui ENTRAMBE le borse erano aperte
+        df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
+        if len(df_aligned) <= bars: return 0
         
-        bench_now = bench_series.iloc[-1]
-        bench_past = bench_series.iloc[-(bars + 1)]
+        etf_now = df_aligned.iloc[-1, 0]
+        bench_now = df_aligned.iloc[-1, 1]
+        
+        etf_past = df_aligned.iloc[-(bars + 1), 0]
+        bench_past = df_aligned.iloc[-(bars + 1), 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         
-        # Questa è esattamente la tua formula: ((ETF_oggi / SPY_oggi) / (ETF_passato / SPY_passato)) - 1
+        # Formula identica all'Excel: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
         return 0
@@ -124,7 +127,6 @@ def elabora_radar(tickers, benchmarks):
     
     spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
     
-    # Pulizia candela live odierna per mantenere il modello ancorato a ieri sera
     spy_clean = spy_s.iloc[:-1] if not spy_s.empty and spy_s.index[-1].strftime('%Y-%m-%d') == oggi_str else spy_s
     gld_clean = gld_s.iloc[:-1] if not gld_s.empty and gld_s.index[-1].strftime('%Y-%m-%d') == oggi_str else gld_s
     uup_clean = uup_s.iloc[:-1] if not uup_s.empty and uup_s.index[-1].strftime('%Y-%m-%d') == oggi_str else uup_s
@@ -184,20 +186,19 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- APPLICAZIONE FORMULA A RAPPORTO SUI TRE ORIZZONTI ---
-            fr_spy_7  = calcola_fr_rapporto(close_closed, spy_clean, 5)
-            fr_spy_30 = calcola_fr_rapporto(close_closed, spy_clean, 21)
-            fr_spy_90 = calcola_fr_rapporto(close_closed, spy_clean, 63)
+            # --- CALCOLO FORZA RELATIVA CON ALLINEAMENTO CALENDARI COMPLETO ---
+            fr_spy_7  = calcola_fr_rapporto_blindato(close_closed, spy_clean, 5)
+            fr_spy_30 = calcola_fr_rapporto_blindato(close_closed, spy_clean, 21)
+            fr_spy_90 = calcola_fr_rapporto_blindato(close_closed, spy_clean, 63)
             
-            fr_gld_7  = calcola_fr_rapporto(close_closed, gld_clean, 5)
-            fr_gld_30 = calcola_fr_rapporto(close_closed, gld_clean, 21)
-            fr_gld_90 = calcola_fr_rapporto(close_closed, gld_clean, 63)
+            fr_gld_7  = calcola_fr_rapporto_blindato(close_closed, gld_clean, 5)
+            fr_gld_30 = calcola_fr_rapporto_blindato(close_closed, gld_clean, 21)
+            fr_gld_90 = calcola_fr_rapporto_blindato(close_closed, gld_clean, 63)
             
-            fr_uup_7  = calcola_fr_rapporto(close_closed, uup_clean, 5)
-            fr_uup_30 = calcola_fr_rapporto(close_closed, uup_clean, 21)
-            fr_uup_90 = calcola_fr_rapporto(close_closed, uup_clean, 63)
+            fr_uup_7  = calcola_fr_rapporto_blindato(close_closed, uup_clean, 5)
+            fr_uup_30 = calcola_fr_rapporto_blindato(close_closed, uup_clean, 21)
+            fr_uup_90 = calcola_fr_rapporto_blindato(close_closed, uup_clean, 63)
             
-            # ASSEGNAZIONE PUNTEGGI IDENTICA ALL'EXCEL DIVISO 10
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
             if fr_spy_30 > 0: qualita += 0.25
