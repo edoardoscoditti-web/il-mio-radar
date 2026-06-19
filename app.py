@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Radar Intermarket eToro", layout="wide")
 st.title("🚀 Il Mio Radar Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Ordinamento e Colori rigorosamente separati per Azione Operativa.")
+st.write("Sincronizzato eToro - Storico ottimizzato a 1 anno e aggiornamento ogni 5 minuti.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -70,13 +70,15 @@ TICKERS_CONFIG = {
     "VXX": {"Nome": "iPath S&P 500 VIX Short-Term", "Tipo": "SAT"}
 }
 
-@st.cache_data(ttl=3600)
+# --- AGGIORNAMENTO RAPIDO (OGNI 5 MINUTI = 300 SECONDI) ---
+@st.cache_data(ttl=300)
 def scarica_benchmarks_sicuri():
     benchmarks = {}
     for b in ["SPY", "GLD", "UUP"]:
         try:
             obj = yf.Ticker(b)
-            hist = obj.history(period="2y")
+            # Ridotto lo storico a 1 anno ("1y")
+            hist = obj.history(period="1y")
             if not hist.empty and 'Close' in hist.columns:
                 s = hist['Close']
                 if s.index.tz is not None: s = s.tz_localize(None)
@@ -94,7 +96,8 @@ def calcola_ritorno_sicuro(series, days):
         return (p_now / p_past) - 1 if p_past != 0 else 0
     except: return 0
 
-@st.cache_data(ttl=3600)
+# --- AGGIORNAMENTO RAPIDO (OGNI 5 MINUTI = 300 SECONDI) ---
+@st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
     data_list = []
     spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
@@ -105,7 +108,8 @@ def elabora_radar(tickers, benchmarks):
     for ticker_yahoo, info in tickers.items():
         try:
             t_obj = yf.Ticker(ticker_yahoo)
-            hist = t_obj.history(period="2y")
+            # Ridotto lo storico a 1 anno ("1y")
+            hist = t_obj.history(period="1y")
             if hist.empty or len(hist) < 200: continue
             
             close_s = hist['Close']
@@ -173,7 +177,6 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- REGOLE VISIVE AGGIORNATE E BLINDATE ---
 def color_var_text(val):
     if val > 0: return 'color: #2e7d32; font-weight: bold;'
     elif val < 0: return 'color: #c62828; font-weight: bold;'
@@ -181,32 +184,24 @@ def color_var_text(val):
 
 def colora_segnali_soft(val):
     val_str = str(val)
-    # Controlliamo PRIMA se c'è l'azione reale di acquisto "🚀 VAI!"
     if "🚀 VAI!" in val_str:
-        if "Pullback" in val_str or "PULLBACK" in val_str:
-            return 'background-color: #1b5e20; color: white; font-weight: bold;' # Verde scuro per Pullback operativi
-        elif "Trend" in val_str:
-            return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;' # Verde chiaro per Trend operativi
-    elif "🤔 VALUTA" in val_str:
-        return 'background-color: #fff9c4; color: #f57f17;' # Giallo pastello tenue
-    elif "❌ STAI FERMO" in val_str:
-        return 'background-color: #ffcdd2; color: #b71c1c;' # Rosso pastello tenue
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 'background-color: #1b5e20; color: white; font-weight: bold;'
+        elif "Trend" in val_str: return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;'
+    elif "🤔 VALUTA" in val_str: return 'background-color: #fff9c4; color: #f57f17;'
+    elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
-# --- FUNZIONE DI ORDINAMENTO STRATEGICO RIGIDA ---
 def assegna_priorita(val):
     val_str = str(val)
     if "🚀 VAI!" in val_str:
-        if "Pullback" in val_str or "PULLBACK" in val_str: return 1  # 1° Posto: I segnali di acquisto sui Pullback
-        elif "Trend" in val_str: return 2                          # 2° Posto: I segnali di acquisto sul Trend
-    elif "🤔 VALUTA" in val_str: return 3                           # 3° Posto: Tutti gli "Osserva/Valuta" (Gialli)
-    return 4                                                        # 4° Posto: I "Stai fermo" (Rossi)
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 1
+        elif "Trend" in val_str: return 2
+    elif "🤔 VALUTA" in val_str: return 3
+    return 4
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
-    
-    # Ordina per priorità d'azione rigida (1, 2, 3, 4) e poi per Punteggio Qualità
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Trend 200", "%B", "IL SUPER-FILTRO"]]
