@@ -117,9 +117,12 @@ def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
 @st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
     data_list = []
-    ora_it = pd.Timestamp.now(tz='Europe/Rome')
-    giorno_settimana = ora_it.dayofweek
-    ora_decimale = ora_it.hour + ora_it.minute / 60.0
+    
+    # === SOLUZIONE OROLOGIO E STATO MERCATI ===
+    # Forziamo l'estrazione dell'ora esatta di Roma (Italia)
+    ora_it = pd.Timestamp.utcnow().tz_convert('Europe/Rome')
+    giorno_settimana = ora_it.dayofweek # 0=Lunedì, 6=Domenica
+    ora_decimale = ora_it.hour + (ora_it.minute / 60.0)
     
     spy_clean = benchmarks.get("SPY", pd.Series())
     gld_clean = benchmarks.get("GLD", pd.Series())
@@ -197,11 +200,16 @@ def elabora_radar(tickers, benchmarks):
             sma200 = close_series.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
-            if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
+            # --- ASSEGNAZIONE STATO MERCATO (OROLOGIO ITALIANO) ---
+            if giorno_settimana >= 5: 
+                stato_mercato = "🔴 CHIUSO"
             else:
-                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE"]):
+                # Titoli Europei (Borse Xetra, Londra, Parigi, Amsterdam)
+                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE", ".MI"]):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
-                else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
+                # Titoli Americani (NYSE, NASDAQ)
+                else: 
+                    stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
             fr_spy_7  = calcola_fr_geometrica(close_series, spy_clean, 7)
             fr_spy_30 = calcola_fr_geometrica(close_series, spy_clean, 30)
@@ -258,7 +266,6 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
     if isinstance(val, str):
         if "ACCELERAZIONE" in val or "Rialzista" in val: return 'color: #2e7d32; font-weight: bold;'
@@ -298,7 +305,6 @@ def colora_segnali_soft(val):
     elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
-# LA TUA FUNZIONE DI PRIORITA' ORIGINARIA CRUCIALE
 def assegna_priorita(val):
     val_str = str(val)
     if "🚀 VAI!" in val_str:
@@ -312,7 +318,7 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    # --- RIGA KPI PREMIUM AD ALTO IMPATTO (VISTA INGRANDITA) ---
+    # --- RIGA KPI PREMIUM (GRANDI E PULITI) ---
     titoli_analizzati = len(df)
     setup_attivi = len(df[df['Setup Operativo'] == "🚀 INGRESSO"])
     super_filtro_on = len(df[df['IL SUPER-FILTRO'].str.contains("VAI!", na=False)])
@@ -329,7 +335,7 @@ if not df.empty:
                 <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #2E7D32; line-height: 1;">{super_filtro_on}</p>
             </div>
             <div style="text-align: center;">
-                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">🚀 SETUP SETUP INGRESSO</p>
+                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">🚀 SETUP INGRESSO</p>
                 <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #E65100; line-height: 1;">{setup_attivi}</p>
             </div>
             <div style="text-align: center;">
@@ -369,4 +375,4 @@ if not df.empty:
         use_container_width=True, height=650, hide_index=True
     )
 else:
-    st.warning("Caricamento del tuo terminale quantitativo completo...")
+    st.warning("Caricamento del terminale quantitativo in corso...")
