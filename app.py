@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import numpy as np
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Sistema di Trading automatico integrato (MACD + Stocastico + RSI + EMA Cross).")
+st.write("Sincronizzato eToro - Algoritmo Intermarket Geometrico (Vero calcolo dell'Alpha quantitativo).")
 
 # ==============================================================================
-# 🗂️ DATABASE TITOLI COMPLETO
+# 🗂️ DATABASE TITOLI COMPLETO (Sincronizzato eToro + Nuovi ETF Xetra)
 # ==============================================================================
 TICKERS_CONFIG = {
     # --- CORE ORIGINARI ---
@@ -98,17 +97,27 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
+# --- MOTORE GEOMETRICO STRUTTURATO (CALCOLO DEL VERO ALPHA INTERMARKET) ---
 def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
     try:
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
         if df_aligned.empty: return 0
-        etf_now, bench_now = df_aligned.iloc[-1, 0], df_aligned.iloc[-1, 1]
-        target_date = df_aligned.index[-1].normalize() - pd.Timedelta(days=days_lookback)
+        
+        etf_now = df_aligned.iloc[-1, 0]
+        bench_now = df_aligned.iloc[-1, 1]
+        
+        # Lookback solido calcolato a ritroso dall'ultima data disponibile a terminale
+        endpoint_date = df_aligned.index[-1].normalize()
+        target_date = endpoint_date - pd.Timedelta(days=days_lookback)
+        
         idx_past = df_aligned.index.get_indexer([target_date], method='nearest')[0]
-        etf_past, bench_past = df_aligned.iloc[idx_past, 0], df_aligned.iloc[idx_past, 1]
+        etf_past = df_aligned.iloc[idx_past, 0]
+        bench_past = df_aligned.iloc[idx_past, 1]
+        
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
-    except: return 0
+    except:
+        return 0
 
 @st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
@@ -131,53 +140,11 @@ def elabora_radar(tickers, benchmarks):
                 hist.index = hist.index.tz_localize(None)
             
             close_series = hist['Close'].dropna()
-            high_series = hist['High']
-            low_series = hist['Low']
-            
             prezzo_attuale = close_series.iloc[-1]
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- CALCOLO INDICATORI OPERATIVI ---
-            ema12 = close_series.ewm(span=12, adjust=False).mean()
-            ema26 = close_series.ewm(span=26, adjust=False).mean()
-            macd_line = ema12 - ema26
-            signal_line = macd_line.ewm(span=9, adjust=False).mean()
-            
-            macd_cross_up = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-2] <= signal_line.iloc[-2]
-            macd_stato = "🟢 UP CROSS" if macd_cross_up else ("🐂 RIALZISTA" if macd_line.iloc[-1] > signal_line.iloc[-1] else "🐻 RIBASSISTA")
-            
-            low14 = low_series.rolling(window=14).min()
-            high14 = high_series.rolling(window=14).max()
-            stoch_k = 100 * (close_series - low14) / (high14 - low14 + 1e-9)
-            stoch_k_smoothed = stoch_k.rolling(window=3).mean()
-            stoch_d = stoch_k_smoothed.rolling(window=3).mean()
-            
-            stoch_cross_up = stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and stoch_k_smoothed.iloc[-2] <= stoch_d.iloc[-2]
-            stoch_stato = "🟢 UP CROSS" if stoch_cross_up else ("🐂 RIALZISTA" if stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] else "🐻 RIBASSISTA")
-            
-            delta = close_series.diff()
-            gain = delta.where(delta > 0, 0)
-            loss = -delta.where(delta < 0, 0)
-            avg_gain = gain.ewm(com=13, adjust=False).mean()
-            avg_loss = loss.ewm(com=13, adjust=False).mean()
-            rs = avg_gain / (avg_loss + 1e-9)
-            rsi_series = 100 - (100 / (1 + rs))
-            rsi_attuale = rsi_series.iloc[-1]
-            
-            if (macd_cross_up or stoch_cross_up) and rsi_attuale < 38:
-                setup_operativo = "🚀 INGRESSO"
-            elif macd_line.iloc[-1] > signal_line.iloc[-1] and stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and rsi_attuale < 50:
-                setup_operativo = "📈 MANTENERE (Hold)"
-            else:
-                setup_operativo = "⏳ MONITORAGGIO"
-                
-            ema9 = close_series.ewm(span=9, adjust=False).mean()
-            ema21 = close_series.ewm(span=21, adjust=False).mean()
-            ema_cross_up = ema9.iloc[-1] > ema21.iloc[-1] and ema9.iloc[-2] <= ema21.iloc[-2]
-            trend_anticipato = "⚡ ACCELERAZIONE" if ema_cross_up else ("🐂 LONG TERM" if ema9.iloc[-1] > ema21.iloc[-1] else "🐻 DEBOLE")
-
-            # --- INDICATORI STANDARD ---
+            # --- INDICATORI TECNICI ---
             sma20 = close_series.rolling(window=20).mean().iloc[-1]
             std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
@@ -186,13 +153,18 @@ def elabora_radar(tickers, benchmarks):
             percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
             
             alert_bande = "💥 TOCCO SUP" if prezzo_attuale >= bollinger_sup else ("💥 TOCCO INF" if prezzo_attuale <= bollinger_inf else "In range")
-            rsi_semplificato = 50 + (10 * (prezzo_attuale - close_series.tail(30).mean()) / close_series.tail(30).std())
-            bandwidth = (bollinger_sup - bollinger_inf) / sma20
             
+            close_30 = close_series.tail(30)
+            rsi_semplificato = 50 + (10 * (prezzo_attuale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
+            
+            bandwidth = (bollinger_sup - bollinger_inf) / sma20
             prev_close = close_series.shift(1)
-            tr = pd.concat([high_series - low_series, (high_series - prev_close).abs(), (low_series - prev_close).abs()], axis=1).max(axis=1)
+            tr = pd.concat([hist['High'] - hist['Low'], (hist['High'] - prev_close).abs(), (hist['Low'] - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
+            
             vol_check = "✅ VOLUME ALTO" if hist['Volume'].iloc[-1] > hist['Volume'].tail(30).mean() else "⚠️ VOL. BASSO"
+            trend_7g_list = close_series.tail(7).tolist()
+            trend_30g_list = close_series.tail(30).tolist()
             
             sma200 = close_series.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
@@ -203,13 +175,16 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            fr_spy_7 = calcola_fr_geometrica(close_series, spy_clean, 7)
+            # --- CALCOLO GEOMETRICO SU FONTI COMPATTE E COERENTI ---
+            fr_spy_7  = calcola_fr_geometrica(close_series, spy_clean, 7)
             fr_spy_30 = calcola_fr_geometrica(close_series, spy_clean, 30)
             fr_spy_90 = calcola_fr_geometrica(close_series, spy_clean, 90)
-            fr_gld_7 = calcola_fr_geometrica(close_series, gld_clean, 7)
+            
+            fr_gld_7  = calcola_fr_geometrica(close_series, gld_clean, 7)
             fr_gld_30 = calcola_fr_geometrica(close_series, gld_clean, 30)
             fr_gld_90 = calcola_fr_geometrica(close_series, gld_clean, 90)
-            fr_uup_7 = calcola_fr_geometrica(close_series, uup_clean, 7)
+            
+            fr_uup_7  = calcola_fr_geometrica(close_series, uup_clean, 7)
             fr_uup_30 = calcola_fr_geometrica(close_series, uup_clean, 30)
             fr_uup_90 = calcola_fr_geometrica(close_series, uup_clean, 90)
             
@@ -226,10 +201,8 @@ def elabora_radar(tickers, benchmarks):
             
             data_list.append({
                 "Ticker": ticker_yahoo, "Nome": info["Nome"], "Tipo": info["Tipo"], "IL SUPER-FILTRO": "", 
-                "Setup Operativo": setup_operativo, "Trend Anticipato ⚡": trend_anticipato, "Qualità ⭐": round(qualita, 3), 
-                "MACD Status": macd_stato, "Stoch Status": stoch_stato, "RSI 14": round(rsi_attuale, 1),
-                "Prezzo": round(prezzo_attuale, 2), "Var. Giornaliera": var_giornaliera, "Stato Mercato": stato_mercato,
-                "ALERT BANDE": alert_bande, "Trend 7G": close_series.tail(7).tolist(), "Trend 30G": close_series.tail(30).tolist(), "Trend 200": trend_200, "VOLUME CHECK": vol_check, "Bandwidth": bandwidth, "ATR": round(atr, 2),
+                "Qualità ⭐": round(qualita, 3), "Prezzo": round(prezzo_attuale, 2), "Var. Giornaliera": var_giornaliera, "Stato Mercato": stato_mercato,
+                "ALERT BANDE": alert_bande, "Trend 7G": trend_7g_list, "Trend 30G": trend_30g_list, "Trend 200": trend_200, "VOLUME CHECK": vol_check, "Bandwidth": bandwidth, "ATR": round(atr, 2),
                 "FR vs SPY 7g": fr_spy_7, "FR vs SPY 30g": fr_spy_30, "FR vs SPY 90g": fr_spy_90,
                 "FR vs ORO 7g": fr_gld_7, "FR vs ORO 30g": fr_gld_30, "FR vs ORO 90g": fr_gld_90,
                 "FR vs USD 7g": fr_uup_7, "FR vs USD 30g": fr_uup_30, "FR vs USD 90g": fr_uup_90,
@@ -259,62 +232,68 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- STYLE FUNCTIONS CORRETTE PER TESTO E NUMERI ---
+# --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
-    if isinstance(val, str):
-        if "UP CROSS" in val or "ACCELERAZIONE" in val or "RIALZISTA" in val: 
-            return 'color: #2e7d32; font-weight: bold;'
-        elif "RIBASSISTA" in val or "DEBOLE" in val: 
-            return 'color: #c62828; font-weight: bold;'
-        return ''
-    try:
-        if val > 0: return 'color: #2e7d32; font-weight: bold;'
-        elif val < 0: return 'color: #c62828; font-weight: bold;'
-    except: pass
+    if val > 0: return 'color: #2e7d32; font-weight: bold;'
+    elif val < 0: return 'color: #c62828; font-weight: bold;'
     return ''
-
-def colora_setup_operativo(val):
-    if "INGRESSO" in str(val): return 'background-color: #1b5e20; color: white; font-weight: bold;'
-    elif "MANTENERE" in str(val): return 'background-color: #e8f5e9; color: #1b5e20;'
-    return 'color: #9e9e9e;'
 
 def colora_stato_soft(val):
     if "APERTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
     elif "CHIUSO" in str(val): return 'background-color: #ffebee; color: #c62828;'
     return ''
 
+def colora_alert_bande(val):
+    if "TOCCO" in str(val): return 'background-color: #ffe0b2; color: #e65100; font-weight: bold;'
+    return 'color: #757575;'
+
+def colora_volumi(val):
+    if "ALTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
+    elif "BASSO" in str(val): return 'background-color: #f5f5f5; color: #9e9e9e;'
+    return ''
+
 def colora_segnali_soft(val):
     val_str = str(val)
-    if "🚀 VAI!" in val_str: return 'background-color: #1b5e20; color: white; font-weight: bold;'
+    if "🚀 VAI!" in val_str:
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 'background-color: #1b5e20; color: white; font-weight: bold;'
+        elif "Trend" in val_str: return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;'
     elif "🤔 VALUTA" in val_str: return 'background-color: #fff9c4; color: #f57f17;'
-    return 'background-color: #ffcdd2; color: #b71c1c;'
+    elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
+    return ''
+
+def assegna_priorita(val):
+    val_str = str(val)
+    if "🚀 VAI!" in val_str:
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 1
+        elif "Trend" in val_str: return 2
+    elif "🤔 VALUTA" in val_str: return 3
+    return 4
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
-    
-    # Ordinamento basato sulle priorità operative di ingresso
-    df['_rank'] = df['Setup Operativo'].apply(lambda x: 1 if "INGRESSO" in x else (2 if "MANTENERE" in x else 3))
+    df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
     colonne_finali = [
-        "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Setup Operativo", "Trend Anticipato ⚡", "Qualità ⭐",
-        "MACD Status", "Stoch Status", "RSI 14", "Prezzo", "Var. Giornaliera", "Stato Mercato",
-        "ALERT BANDE", "Trend 7G", "Trend 30G", "Trend 200", "VOLUME CHECK",
+        "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Qualità ⭐", "Prezzo", "Var. Giornaliera", "Stato Mercato",
+        "ALERT BANDE", "Trend 7G", "Trend 30G", "Trend 200", "VOLUME CHECK", "Bandwidth", "ATR",
         "FR vs SPY 7g", "FR vs SPY 30g", "FR vs SPY 90g",
         "FR vs ORO 7g", "FR vs ORO 30g", "FR vs ORO 90g",
-        "FR vs USD 7g", "FR vs USD 30g", "FR vs USD 90g", "RSI Semplificato", "%B"
+        "FR vs USD 7g", "FR vs USD 30g", "FR vs USD 90g",
+        "RSI Semplificato", "%B", "MMA 20"
     ]
     
     df_visualizzazione = df[colonne_finali]
-    formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}"}
+    formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}", "Bandwidth": "{:.1%}"}
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
-                                .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g', 'MACD Status', 'Stoch Status', 'Trend Anticipato ⚡'])
+                                .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
                                 .map(colora_stato_soft, subset=['Stato Mercato'])
-                                .map(colora_setup_operativo, subset=['Setup Operativo'])
+                                .map(colora_alert_bande, subset=['ALERT BANDE'])
+                                .map(colora_volumi, subset=['VOLUME CHECK'])
                                 .map(colora_segnali_soft, subset=['IL SUPER-FILTRO'])
                                 .set_properties(**{'text-align': 'center'}),
         column_config={
