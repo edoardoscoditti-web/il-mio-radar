@@ -3,19 +3,20 @@ import pandas as pd
 import yfinance as yf
 
 st.set_page_config(page_title="Il Mio Radar Quantitativo", layout="wide")
-st.title("📊 Il Mio Radar Finanziario")
-st.write("Dati in tempo reale da Yahoo Finance - Logica del Super-Filtro applicata.")
+st.title("📊 Il Mio Radar Finanziario (Sincronizzato eToro)")
+st.write("Dati in tempo reale espressi in Dollari (USD) - Allineati al 100% con eToro.")
 
-# --- CONFIGURAZIONE DEI TUOI TICKER ---
+# --- CONFIGURAZIONE TICKER IN DOLLARI (Sincronizzati con eToro) ---
+# Usiamo ".L" per dire a Yahoo di prendere la quotazione di Londra in Dollari (USD)
 TICKERS_CONFIG = {
-    "ISAC.MI": {"Nome": "ISAC (Msci World AC)", "Tipo": "CORE", "Qualita": 1.00},
-    "EIMI.MI": {"Nome": "EIMI (Emerging Markets)", "Tipo": "SAT", "Qualita": 0.70},
+    "ISAC.L":  {"Nome": "ISAC (Msci World AC)", "Tipo": "CORE", "Qualita": 1.00},
+    "EIMI.L":  {"Nome": "EIMI (Emerging Markets)", "Tipo": "SAT", "Qualita": 0.70},
     "SOXX":    {"Nome": "SOXX (Semiconductor US)", "Tipo": "SAT", "Qualita": 0.80},
-    "RBOT.MI": {"Nome": "ITWIN (Automation/Tech)", "Tipo": "SAT", "Qualita": 0.76},
+    "RBOT.L":  {"Nome": "ITWIN/RBOT (Automation)", "Tipo": "SAT", "Qualita": 0.76},
     "INDA":    {"Nome": "INDA (MSCI India)", "Tipo": "SAT", "Qualita": 0.65}
 }
 
-@st.cache_data(ttl=60)  # Abbassato a 1 minuto per i test, così vedi subito i cambi
+@st.cache_data(ttl=60)  # Aggiornamento rapido per i controlli visivi
 def carica_dati_finanziari(tickers):
     data_list = []
     for ticker_yahoo, info in tickers.items():
@@ -23,12 +24,8 @@ def carica_dati_finanziari(tickers):
             ticker_obj = yf.Ticker(ticker_yahoo)
             hist = ticker_obj.history(period="2y")
             
-            if hist.empty:
-                st.error(f"❌ {ticker_yahoo}: Yahoo ha restituito una tabella VUOTA (Borsa chiusa o Ticker errato).")
-                continue
-                
-            if len(hist) < 200:
-                st.error(f"❌ {ticker_yahoo}: Storico insufficiente ({len(hist)} giorni anziché 200).")
+            if hist.empty or 'Close' not in hist.columns or len(hist) < 200:
+                st.error(f"❌ Impossibile caricare {ticker_yahoo}. Verifica borsa o ticker.")
                 continue
                 
             prezzo_attuale = hist['Close'].iloc[-1]
@@ -39,7 +36,6 @@ def carica_dati_finanziari(tickers):
             std20 = hist['Close'].rolling(window=20).std().iloc[-1]
             
             if std20 == 0 or pd.isna(sma200) or pd.isna(sma20):
-                st.error(f"❌ {ticker_yahoo}: Errore nel calcolo delle medie matematiche.")
                 continue
                 
             bollinger_sup = sma20 + (2 * std20)
@@ -56,13 +52,13 @@ def carica_dati_finanziari(tickers):
                 "Nome": info["Nome"],
                 "Tipo": info["Tipo"],
                 "Qualità": info["Qualita"],
-                "Prezzo": round(prezzo_attuale, 2),
+                "Prezzo ($)": round(prezzo_attuale, 2),
                 "MMA 20": round(sma20, 2),
                 "%B": round(percent_b, 2),
                 "Trend 200": trend
             })
         except Exception as e:
-            st.error(f"💥 Errore tecnico su {ticker_yahoo}: {str(e)}")
+            st.error(f"Errore su {ticker_yahoo}: {str(e)}")
             
     return pd.DataFrame(data_list)
 
@@ -106,7 +102,7 @@ def calcola_super_filtro(row):
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
-    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo", "Trend 200", "%B", "IL SUPER-FILTRO"]]
+    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo ($)", "Trend 200", "%B", "IL SUPER-FILTRO"]]
     st.dataframe(df_visualizzazione.style.set_properties(**{'text-align': 'center'}), use_container_width=True)
 else:
-    st.warning("Tabella vuota. Guarda i messaggi di errore rossi sopra per capire cosa blocca i ticker.")
+    st.warning("In attesa del caricamento dei dati in Dollari...")
