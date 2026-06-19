@@ -11,11 +11,11 @@ TICKERS_CONFIG = {
     "ISAC.MI": {"Nome": "ISAC (Msci World AC)", "Tipo": "CORE", "Qualita": 1.00},
     "EIMI.MI": {"Nome": "EIMI (Emerging Markets)", "Tipo": "SAT", "Qualita": 0.70},
     "SOXX":    {"Nome": "SOXX (Semiconductor US)", "Tipo": "SAT", "Qualita": 0.80},
-    "ITWIN.MI":{"Nome": "ITWIN (Automation/Tech)", "Tipo": "SAT", "Qualita": 0.76},
+    "RBOT.MI": {"Nome": "ITWIN (Automation/Tech)", "Tipo": "SAT", "Qualita": 0.76},
     "INDA":    {"Nome": "INDA (MSCI India)", "Tipo": "SAT", "Qualita": 0.65}
 }
 
-@st.cache_data(ttl=3600)  # Aggiorna i dati ogni ora
+@st.cache_data(ttl=60)  # Abbassato a 1 minuto per i test, così vedi subito i cambi
 def carica_dati_finanziari(tickers):
     data_list = []
     for ticker_yahoo, info in tickers.items():
@@ -23,7 +23,12 @@ def carica_dati_finanziari(tickers):
             ticker_obj = yf.Ticker(ticker_yahoo)
             hist = ticker_obj.history(period="2y")
             
-            if hist.empty or 'Close' not in hist.columns or len(hist) < 200:
+            if hist.empty:
+                st.error(f"❌ {ticker_yahoo}: Yahoo ha restituito una tabella VUOTA (Borsa chiusa o Ticker errato).")
+                continue
+                
+            if len(hist) < 200:
+                st.error(f"❌ {ticker_yahoo}: Storico insufficiente ({len(hist)} giorni anziché 200).")
                 continue
                 
             prezzo_attuale = hist['Close'].iloc[-1]
@@ -34,6 +39,7 @@ def carica_dati_finanziari(tickers):
             std20 = hist['Close'].rolling(window=20).std().iloc[-1]
             
             if std20 == 0 or pd.isna(sma200) or pd.isna(sma20):
+                st.error(f"❌ {ticker_yahoo}: Errore nel calcolo delle medie matematiche.")
                 continue
                 
             bollinger_sup = sma20 + (2 * std20)
@@ -56,7 +62,7 @@ def carica_dati_finanziari(tickers):
                 "Trend 200": trend
             })
         except Exception as e:
-            pass
+            st.error(f"💥 Errore tecnico su {ticker_yahoo}: {str(e)}")
             
     return pd.DataFrame(data_list)
 
@@ -103,4 +109,4 @@ if not df.empty:
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo", "Trend 200", "%B", "IL SUPER-FILTRO"]]
     st.dataframe(df_visualizzazione.style.set_properties(**{'text-align': 'center'}), use_container_width=True)
 else:
-    st.warning("Errore nel caricamento dei ticker.")
+    st.warning("Tabella vuota. Guarda i messaggi di errore rossi sopra per capire cosa blocca i ticker.")
