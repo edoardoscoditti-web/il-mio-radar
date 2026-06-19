@@ -4,11 +4,9 @@ import yfinance as yf
 
 st.set_page_config(page_title="Radar Intermarket eToro", layout="wide")
 st.title("🚀 Il Mio Radar Quantitativo Intermarket")
-st.write("Calcolo dinamico di Forza Relativa vs S&P500, Oro e Dollaro - Logica Excel 100% integrata.")
+st.write("Sincronizzato eToro - Ordinamento per Priorità Strategica e Colori Soft.")
 
-# ==============================================================================
-# 🗂️ IL TUO RADAR COMPLETO (Estratto dal tuo file Excel - Sincronizzato eToro)
-# ==============================================================================
+# --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
     "SWDA.L": {"Nome": "iShares Core MSCI World", "Tipo": "CORE"},
     "ISAC.L": {"Nome": "iShares MSCI ACWI", "Tipo": "CORE"},
@@ -72,7 +70,6 @@ TICKERS_CONFIG = {
     "VXX": {"Nome": "iPath S&P 500 VIX Short-Term", "Tipo": "SAT"}
 }
 
-# --- SCARICAMENTO BENCHMARK BLINDATO ---
 @st.cache_data(ttl=3600)
 def scarica_benchmarks_sicuri():
     benchmarks = {}
@@ -81,13 +78,10 @@ def scarica_benchmarks_sicuri():
             obj = yf.Ticker(b)
             hist = obj.history(period="2y")
             if not hist.empty and 'Close' in hist.columns:
-                # Forza la rimozione del fuso orario per evitare conflitti
                 s = hist['Close']
-                if s.index.tz is not None:
-                    s = s.tz_localize(None)
+                if s.index.tz is not None: s = s.tz_localize(None)
                 benchmarks[b] = s.dropna()
-        except:
-            pass
+        except: pass
     return benchmarks
 
 def calcola_ritorno_sicuro(series, days):
@@ -95,71 +89,51 @@ def calcola_ritorno_sicuro(series, days):
         if series is None or series.empty: return 0
         p_now = series.iloc[-1]
         target_date = series.index[-1] - pd.Timedelta(days=days)
-        # Trova l'indice della data disponibile più vicina senza errori di fuso orario
         idx = series.index.get_indexer([target_date], method='nearest')[0]
         p_past = series.iloc[idx]
-        if p_past == 0: return 0
-        return (p_now / p_past) - 1
-    except:
-        return 0
+        return (p_now / p_past) - 1 if p_past != 0 else 0
+    except: return 0
 
 @st.cache_data(ttl=3600)
 def elabora_radar(tickers, benchmarks):
     data_list = []
-    
-    spy_s = benchmarks.get("SPY")
-    gld_s = benchmarks.get("GLD")
-    uup_s = benchmarks.get("UUP")
-    
-    spy_7 = calcola_ritorno_sicuro(spy_s, 7)
-    spy_30 = calcola_ritorno_sicuro(spy_s, 30)
-    spy_90 = calcola_ritorno_sicuro(spy_s, 90)
-    
-    gld_7 = calcola_ritorno_sicuro(gld_s, 7)
-    gld_30 = calcola_ritorno_sicuro(gld_s, 30)
-    gld_90 = calcola_ritorno_sicuro(gld_s, 90)
-    
-    uup_7 = calcola_ritorno_sicuro(uup_s, 7)
-    uup_30 = calcola_ritorno_sicuro(uup_s, 30)
-    uup_90 = calcola_ritorno_sicuro(uup_s, 90)
+    spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
+    spy_7, spy_30, spy_90 = calcola_ritorno_sicuro(spy_s, 7), calcola_ritorno_sicuro(spy_s, 30), calcola_ritorno_sicuro(spy_s, 90)
+    gld_7, gld_30, gld_90 = calcola_ritorno_sicuro(gld_s, 7), calcola_ritorno_sicuro(gld_s, 30), calcola_ritorno_sicuro(gld_s, 90)
+    uup_7, uup_30, uup_90 = calcola_ritorno_sicuro(uup_s, 7), calcola_ritorno_sicuro(uup_s, 30), calcola_ritorno_sicuro(uup_s, 90)
     
     for ticker_yahoo, info in tickers.items():
         try:
             t_obj = yf.Ticker(ticker_yahoo)
             hist = t_obj.history(period="2y")
-            
             if hist.empty or len(hist) < 200: continue
             
             close_s = hist['Close']
-            if close_s.index.tz is not None:
-                close_s = close_s.tz_localize(None)
+            if close_s.index.tz is not None: close_s = close_s.tz_localize(None)
             close_s = close_s.dropna()
             
             prezzo_attuale = close_s.iloc[-1]
+            prezzo_ieri = close_s.iloc[-2]
+            var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
+            
             sma200 = close_s.rolling(window=200).mean().iloc[-1]
             sma20 = close_s.rolling(window=20).mean().iloc[-1]
             std20 = close_s.rolling(window=20).std().iloc[-1]
-            
             if std20 == 0: continue
+            
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
             percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
             trend = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
-            etf_7 = calcola_ritorno_sicuro(close_s, 7)
-            etf_30 = calcola_ritorno_sicuro(close_s, 30)
-            etf_90 = calcola_ritorno_sicuro(close_s, 90)
-            
-            # --- ALGORITMO INTERMARKET PUNTEGGIO QUALITÀ MATRICE 3X3 ---
+            etf_7, etf_30, etf_90 = calcola_ritorno_sicuro(close_s, 7), calcola_ritorno_sicuro(close_s, 30), calcola_ritorno_sicuro(close_s, 90)
             qualita = 0.0
             if etf_7 > spy_7: qualita += 0.15
             if etf_30 > spy_30: qualita += 0.25
             if etf_90 > spy_90: qualita += 0.30
-            
             if etf_7 > gld_7: qualita += 0.025
             if etf_30 > gld_30: qualita += 0.050
             if etf_90 > gld_90: qualita += 0.075
-            
             if etf_7 > uup_7: qualita += 0.025
             if etf_30 > uup_30: qualita += 0.050
             if etf_90 > uup_90: qualita += 0.075
@@ -170,24 +144,19 @@ def elabora_radar(tickers, benchmarks):
                 "Tipo": info["Tipo"],
                 "Qualità ⭐": round(qualita, 3),
                 "Prezzo ($)": round(prezzo_attuale, 2),
+                "Var. Giornaliera": var_giornaliera,
                 "MMA 20": round(sma20, 2),
                 "%B": round(percent_b, 2),
                 "Trend 200": trend
             })
-        except:
-            pass
+        except: pass
     return pd.DataFrame(data_list)
 
 benchmarks = scarica_benchmarks_sicuri()
 df = elabora_radar(TICKERS_CONFIG, benchmarks)
 
 def calcola_super_filtro(row):
-    c2 = row['Tipo']
-    q2 = row['%B']
-    u2 = row['Trend 200']
-    m2 = row['MMA 20']
-    g2 = row['Qualità ⭐'] # Mantiene la lettura decimale corretta per i calcoli intermedi
-    
+    c2, q2, u2, m2, g2 = row['Tipo'], row['%B'], row['Trend 200'], row['MMA 20'], row['Qualità ⭐']
     if c2 == "CORE":
         if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40: return "🚀 VAI! (Pullback CORE)"
         elif q2 < 0.55 and m2 > 40: return "🤔 VALUTA (Osserva CORE)"
@@ -204,21 +173,45 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-def colora_segnali(val):
-    if "🚀 VAI!" in str(val): return 'background-color: #2ecc71; color: black; font-weight: bold;'
-    elif "🤔 VALUTA" in str(val): return 'background-color: #f1c40f; color: black;'
-    elif "❌ STAI FERMO" in str(val): return 'background-color: #e74c3c; color: white;'
+# --- REGOLE COLORE PERSONALIZZATE ---
+def color_var_text(val):
+    if val > 0: return 'color: #2e7d32; font-weight: bold;'
+    elif val < 0: return 'color: #c62828; font-weight: bold;'
     return ''
+
+def colora_segnali_soft(val):
+    val_str = str(val)
+    if "Pullback" in val_str or "PULLBACK" in val_str:
+        return 'background-color: #1b5e20; color: white; font-weight: bold;' # Verde scuro istituzionale
+    elif "Trend" in val_str:
+        return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;' # Verde chiarissimo pastello
+    elif "VALUTA" in val_str:
+        return 'background-color: #fff9c4; color: #f57f17;' # Giallo pastello tenue
+    elif "STAI FERMO" in val_str:
+        return 'background-color: #ffcdd2; color: #b71c1c;' # Rosso pastello tenue
+    return ''
+
+# --- FUNZIONE DI ORDINAMENTO STRATEGICO ---
+def assegna_priorita(val):
+    val_str = str(val)
+    if "Pullback" in val_str or "PULLBACK" in val_str: return 1
+    elif "Trend" in val_str: return 2
+    elif "VALUTA" in val_str: return 3
+    return 4
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
-    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Trend 200", "%B", "IL SUPER-FILTRO"]]
-    df_visualizzazione = df_visualizzazione.sort_values(by="IL SUPER-FILTRO", ascending=False)
+    df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     
-    # FORMATTAZIONE PERCENTUALE VISIVA SENZA TOCCARE I VALORI SOTTOSTANTI
+    # Ordina prima per segnale strategico e poi per punteggio qualità decrescente
+    df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
+    
+    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Trend 200", "%B", "IL SUPER-FILTRO"]]
+    
     st.dataframe(
-        df_visualizzazione.style.format({"Qualità ⭐": "{:.0%}"})
-                                .map(colora_segnali, subset=['IL SUPER-FILTRO'])
+        df_visualizzazione.style.format({"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}"})
+                                .map(color_var_text, subset=['Var. Giornaliera'])
+                                .map(colora_segnali_soft, subset=['IL SUPER-FILTRO'])
                                 .set_properties(**{'text-align': 'center'}),
         use_container_width=True,
         height=800
