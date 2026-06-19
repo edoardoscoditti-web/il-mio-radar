@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Calendari intermarket allineati per data al 100% con logica geometrica.")
+st.write("Sincronizzato eToro - Date di lookback calcolate da OGGI() per un allineamento al millesimo con Excel.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,22 +97,29 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- FORMULA INTERMARKET ALLINEATA AL 100% SU GIORNI CONDIVISI ---
-def calcola_fr_rapporto_blindato(etf_series, bench_series, bars):
+# --- FORMULA CALCOLO SU BASE DATA CALENDARIO DA OGGI() EXCEL-STYLE ---
+def calcola_fr_rapporto_calendario(etf_series, bench_series, days):
     try:
-        # Allineamento rigido delle date (Inner Join): tiene solo i giorni in cui ENTRAMBE le borse erano aperte
+        # Allineamento calendari borse
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
-        if len(df_aligned) <= bars: return 0
+        if df_aligned.empty: return 0
         
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        etf_past = df_aligned.iloc[-(bars + 1), 0]
-        bench_past = df_aligned.iloc[-(bars + 1), 1]
+        # Calcolo data storica esatta partendo da OGGI (Fuso italiano)
+        oggi = pd.Timestamp.now(tz='Europe/Rome').tz_localize(None).normalize()
+        target_date = oggi - pd.Timedelta(days=days)
+        
+        # Trova il giorno di borsa aperta più vicino alla data target
+        idx = df_aligned.index.get_indexer([target_date], method='nearest')[0]
+        
+        etf_past = df_aligned.iloc[idx, 0]
+        bench_past = df_aligned.iloc[idx, 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         
-        # Formula identica all'Excel: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
+        # Logica geometrica a rapporto: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
         return 0
@@ -186,18 +193,18 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- CALCOLO FORZA RELATIVA CON ALLINEAMENTO CALENDARI COMPLETO ---
-            fr_spy_7  = calcola_fr_rapporto_blindato(close_closed, spy_clean, 5)
-            fr_spy_30 = calcola_fr_rapporto_blindato(close_closed, spy_clean, 21)
-            fr_spy_90 = calcola_fr_rapporto_blindato(close_closed, spy_clean, 63)
+            # --- CHIAMATE ALLINEATE A CALENDARIO EXCEL (7g, 30g, 90g CALENDAR DAYS) ---
+            fr_spy_7  = calcola_fr_rapporto_calendario(close_closed, spy_clean, 7)
+            fr_spy_30 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 30)
+            fr_spy_90 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 90)
             
-            fr_gld_7  = calcola_fr_rapporto_blindato(close_closed, gld_clean, 5)
-            fr_gld_30 = calcola_fr_rapporto_blindato(close_closed, gld_clean, 21)
-            fr_gld_90 = calcola_fr_rapporto_blindato(close_closed, gld_clean, 63)
+            fr_gld_7  = calcola_fr_rapporto_calendario(close_closed, gld_clean, 7)
+            fr_gld_30 = calcola_fr_rapporto_calendario(close_closed, gld_clean, 30)
+            fr_gld_90 = calcola_fr_rapporto_calendario(close_closed, gld_clean, 90)
             
-            fr_uup_7  = calcola_fr_rapporto_blindato(close_closed, uup_clean, 5)
-            fr_uup_30 = calcola_fr_rapporto_blindato(close_closed, uup_clean, 21)
-            fr_uup_90 = calcola_fr_rapporto_blindato(close_closed, uup_clean, 63)
+            fr_uup_7  = calcola_fr_rapporto_calendario(close_closed, uup_clean, 7)
+            fr_uup_30 = calcola_fr_rapporto_calendario(close_closed, uup_clean, 30)
+            fr_uup_90 = calcola_fr_rapporto_calendario(close_closed, uup_clean, 90)
             
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
