@@ -3,15 +3,47 @@ import pandas as pd
 import yfinance as yf
 import numpy as np
 
-st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
-st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Algoritmo Intermarket Geometrico con Scansione Setup Professionali.")
+# Configurazione Pagina
+st.set_page_config(page_title="Quant Terminal Pro", layout="wide", initial_sidebar_state="collapsed")
+
+# --- STILE CSS PERSONALIZZATO (HEADER PREMIUM) ---
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 2.8rem !important;
+        font-weight: 800;
+        color: #1A365D;
+        text-align: center;
+        margin-bottom: 0px;
+        padding-bottom: 0px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 1px;
+    }
+    .sub-header {
+        font-size: 1.1rem !important;
+        color: #4A5568;
+        text-align: center;
+        margin-top: -5px;
+        margin-bottom: 25px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+    }
+    .highlight {
+        color: #2E7D32;
+    }
+    </style>
+    <div class="main-header">
+        ⚡ QUANT <span class="highlight">TERMINAL</span> PRO
+    </div>
+    <div class="sub-header">
+        Intermarket Geometric Engine & eToro Setup Scanner
+    </div>
+""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 🗂️ DATABASE TITOLI COMPLETO (Sincronizzato eToro + Nuovi ETF Xetra)
+# 🗂️ DATABASE TITOLI COMPLETO
 # ==============================================================================
 TICKERS_CONFIG = {
-    # --- CORE ORIGINARI ---
     "SWDA.L": {"Nome": "iShares Core MSCI World", "Tipo": "CORE"},
     "ISAC.L": {"Nome": "iShares MSCI ACWI", "Tipo": "CORE"},
     "CSPX.L": {"Nome": "iShares Core S&P 500", "Tipo": "CORE"},
@@ -24,16 +56,12 @@ TICKERS_CONFIG = {
     "VGK": {"Nome": "Vanguard FTSE Europe", "Tipo": "CORE"},
     "IJPA.L": {"Nome": "iShares MSCI Japan", "Tipo": "CORE"},
     "EWJ": {"Nome": "iShares MSCI Japan ETF (USA)", "Tipo": "CORE"},
-    
-    # --- NUOVI TITOLI TEDESCHI BORSA XETRA (.DE) ---
     "ESPO.DE": {"Nome": "VanEck Video Gaming & Esports UCITS", "Tipo": "SAT"},
     "IUSN.DE": {"Nome": "iShares MSCI World Small Cap UCITS", "Tipo": "CORE"},
     "IS3N.DE": {"Nome": "iShares Core MSCI EM IMI UCITS", "Tipo": "CORE"},
     "IS3Q.DE": {"Nome": "iShares MSCI World Quality Factor", "Tipo": "SAT"},
     "IS3S.DE": {"Nome": "iShares MSCI World Value Factor", "Tipo": "SAT"},
     "HDX1.DE": {"Nome": "L&G DAX Daily 2x Long UCITS (Leva)", "Tipo": "SAT"},
-
-    # --- SATELLITI ORIGINARI ---
     "WDEF.L": {"Nome": "WisdomTree Europe Defence", "Tipo": "SAT"},
     "VUG": {"Nome": "Vanguard Growth (USA)", "Tipo": "SAT"},
     "VAPU.L": {"Nome": "Vanguard FTSE Asia Pacific", "Tipo": "SAT"},
@@ -98,22 +126,18 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- MOTORE GEOMETRICO ORIGINARIO (INALTERATO) ---
+# --- MOTORE GEOMETRICO ---
 def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
     try:
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
         if df_aligned.empty: return 0
-        
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
-        
         endpoint_date = df_aligned.index[-1].normalize()
         target_date = endpoint_date - pd.Timedelta(days=days_lookback)
-        
         idx_past = df_aligned.index.get_indexer([target_date], method='nearest')[0]
         etf_past = df_aligned.iloc[idx_past, 0]
         bench_past = df_aligned.iloc[idx_past, 1]
-        
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
@@ -142,20 +166,17 @@ def elabora_radar(tickers, benchmarks):
             close_series = hist['Close'].dropna()
             high_series = hist['High']
             low_series = hist['Low']
-            
             prezzo_attuale = close_series.iloc[-1]
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- CALCOLO NUOVI SETUP OPERATIVI (SOTTO-INSIEME ISOLATO) ---
-            # 1. MACD (12, 26, 9)
+            # --- INDICATORI e SETUP ---
             ema12 = close_series.ewm(span=12, adjust=False).mean()
             ema26 = close_series.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
             signal_line = macd_line.ewm(span=9, adjust=False).mean()
             macd_cross_up = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-2] <= signal_line.iloc[-2]
             
-            # 2. STOCASTICO (14, 3, 3)
             low14 = low_series.rolling(window=14).min()
             high14 = high_series.rolling(window=14).max()
             stoch_k = 100 * (close_series - low14) / (high14 - low14 + 1e-9)
@@ -163,17 +184,14 @@ def elabora_radar(tickers, benchmarks):
             stoch_d = stoch_k_smoothed.rolling(window=3).mean()
             stoch_cross_up = stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and stoch_k_smoothed.iloc[-2] <= stoch_d.iloc[-2]
             
-            # 3. RSI (14) CLASSICO DI ETORO
             delta = close_series.diff()
             gain = delta.where(delta > 0, 0)
             loss = -delta.where(delta < 0, 0)
             avg_gain = gain.ewm(com=13, adjust=False).mean()
             avg_loss = loss.ewm(com=13, adjust=False).mean()
             rs = avg_gain / (avg_loss + 1e-9)
-            rsi_series = 100 - (100 / (1 + rs))
-            rsi_attuale = rsi_series.iloc[-1]
+            rsi_attuale = (100 - (100 / (1 + rs))).iloc[-1]
             
-            # 4. VALUTAZIONE DI INGRESSO REALE
             if (macd_cross_up or stoch_cross_up) and rsi_attuale < 38:
                 setup_operativo = "🚀 INGRESSO"
             elif macd_line.iloc[-1] > signal_line.iloc[-1] and stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and rsi_attuale < 50:
@@ -181,7 +199,6 @@ def elabora_radar(tickers, benchmarks):
             else:
                 setup_operativo = "Monitoraggio"
                 
-            # 5. TREND ANTICIPATO VELOCE (EMA 9 / EMA 21)
             ema9 = close_series.ewm(span=9, adjust=False).mean()
             ema21 = close_series.ewm(span=21, adjust=False).mean()
             if ema9.iloc[-1] > ema21.iloc[-1] and ema9.iloc[-2] <= ema21.iloc[-2]:
@@ -189,28 +206,22 @@ def elabora_radar(tickers, benchmarks):
             else:
                 trend_anticipato = "Rialzista" if ema9.iloc[-1] > ema21.iloc[-1] else "Ribassista"
 
-            # --- INDICATORI TECNICI ORIGINARI (INALTERATI) ---
             sma20 = close_series.rolling(window=20).mean().iloc[-1]
             std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
             percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
-            
             alert_bande = "💥 TOCCO SUP" if prezzo_attuale >= bollinger_sup else ("💥 TOCCO INF" if prezzo_attuale <= bollinger_inf else "In range")
-            
             close_30 = close_series.tail(30)
             rsi_semplificato = 50 + (10 * (prezzo_attuale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
-            
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
             prev_close = close_series.shift(1)
             tr = pd.concat([hist['High'] - hist['Low'], (hist['High'] - prev_close).abs(), (hist['Low'] - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
-            
             vol_check = "✅ VOLUME ALTO" if hist['Volume'].iloc[-1] > hist['Volume'].tail(30).mean() else "⚠️ VOL. BASSO"
             trend_7g_list = close_series.tail(7).tolist()
             trend_30g_list = close_series.tail(30).tolist()
-            
             sma200 = close_series.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
@@ -223,11 +234,9 @@ def elabora_radar(tickers, benchmarks):
             fr_spy_7  = calcola_fr_geometrica(close_series, spy_clean, 7)
             fr_spy_30 = calcola_fr_geometrica(close_series, spy_clean, 30)
             fr_spy_90 = calcola_fr_geometrica(close_series, spy_clean, 90)
-            
             fr_gld_7  = calcola_fr_geometrica(close_series, gld_clean, 7)
             fr_gld_30 = calcola_fr_geometrica(close_series, gld_clean, 30)
             fr_gld_90 = calcola_fr_geometrica(close_series, gld_clean, 90)
-            
             fr_uup_7  = calcola_fr_geometrica(close_series, uup_clean, 7)
             fr_uup_30 = calcola_fr_geometrica(close_series, uup_clean, 30)
             fr_uup_90 = calcola_fr_geometrica(close_series, uup_clean, 90)
@@ -277,7 +286,6 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
     if isinstance(val, str):
         if "ACCELERAZIONE" in val or "Rialzista" in val: return 'color: #2e7d32; font-weight: bold;'
@@ -317,7 +325,6 @@ def colora_segnali_soft(val):
     elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
-# LA TUA FUNZIONE DI PRIORITA' ORIGINARIA (RIPRISTINATA AL 100%)
 def assegna_priorita(val):
     val_str = str(val)
     if "🚀 VAI!" in val_str:
@@ -331,6 +338,20 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
+    # --- DASHBOARD KIPs (NUMERI RIASSUNTIVI) ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    titoli_analizzati = len(df)
+    setup_attivi = len(df[df['Setup Operativo'] == "🚀 INGRESSO"])
+    super_filtro_on = len(df[df['IL SUPER-FILTRO'].str.contains("VAI!", na=False)])
+    mercati_aperti = len(df[df['Stato Mercato'].str.contains("APERTO", na=False)])
+    
+    c1.metric("📊 Titoli Scansionati", titoli_analizzati)
+    c2.metric("🎯 Segnali Super-Filtro", super_filtro_on)
+    c3.metric("🚀 Setup Ingresso (eToro)", setup_attivi)
+    c4.metric("🟢 Mercati Aperti", mercati_aperti)
+    st.markdown("<hr style='margin-bottom: 25px;'>", unsafe_allow_html=True)
+
     colonne_finali = [
         "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Setup Operativo", "Trend Anticipato ⚡", "Qualità ⭐", "Prezzo", "Var. Giornaliera", "Stato Mercato",
         "ALERT BANDE", "Trend 7G", "Trend 30G", "Trend 200", "VOLUME CHECK", "Bandwidth", "ATR",
