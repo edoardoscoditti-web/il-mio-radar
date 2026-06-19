@@ -77,7 +77,7 @@ TICKERS_CONFIG = {
     "SLV": {"Nome": "iShares Silver Trust (Argento)", "Tipo": "SAT"},
     "PPLT": {"Nome": "Aberdeen Physical Platinum", "Tipo": "SAT"},
     "COPA": {"Nome": "iShares Morningstar Global Copper", "Tipo": "SAT"},
-    "CPER": {"Keep": "United States Copper Index", "Tipo": "SAT"},
+    "CPER": {"Nome": "United States Copper Index", "Tipo": "SAT"},
     "PALL": {"Nome": "Aberdeen Physical Palladium", "Tipo": "SAT"},
     "GOLD": {"Nome": "Barrick Gold Corp (Azionario)", "Tipo": "SAT"},
     "URA": {"Nome": "Global X Uranium ETF", "Tipo": "SAT"},
@@ -170,7 +170,8 @@ def elabora_radar(tickers, benchmarks):
             avg_gain = gain.ewm(com=13, adjust=False).mean()
             avg_loss = loss.ewm(com=13, adjust=False).mean()
             rs = avg_gain / (avg_loss + 1e-9)
-            rsi_attuale = (100 - (100 / (1 + rs))).iloc[-1]
+            rsi_series = 100 - (100 / (1 + rs))
+            rsi_attuale = rsi_series.iloc[-1]
             
             # 4. VALUTAZIONE DI INGRESSO REALE
             if (macd_cross_up or stoch_cross_up) and rsi_attuale < 38:
@@ -188,7 +189,7 @@ def elabora_radar(tickers, benchmarks):
             else:
                 trend_anticipato = "Rialzista" if ema9.iloc[-1] > ema21.iloc[-1] else "Ribassista"
 
-            # --- VECCHI INDICATORI TECNICI ORIGINARI (INALTERATI) ---
+            # --- INDICATORI TECNICI ORIGINARI (INALTERATI) ---
             sma20 = close_series.rolling(window=20).mean().iloc[-1]
             std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
@@ -316,17 +317,18 @@ def colora_segnali_soft(val):
     elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
-# FUNZIONE DI ORDINAMENTO DI SINTESI OPERATIVA (METTE I SEGNALI IN ALTO)
-def assegna_priorita_combinata(row):
-    setup = str(row['Setup Operativo'])
-    filtro = str(row['IL SUPER-FILTRO'])
-    if "INGRESSO" in setup or "🚀 VAI!" in filtro: return 1
-    if "Mantenere" in setup or "🤔 VALUTA" in filtro: return 2
-    return 3
+# LA TUA FUNZIONE DI PRIORITA' ORIGINARIA (RIPRISTINATA AL 100%)
+def assegna_priorita(val):
+    val_str = str(val)
+    if "🚀 VAI!" in val_str:
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 1
+        elif "Trend" in val_str: return 2
+    elif "🤔 VALUTA" in val_str: return 3
+    return 4
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
-    df['_rank'] = df.apply(assegna_priorita_combinata, axis=1)
+    df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
     colonne_finali = [
