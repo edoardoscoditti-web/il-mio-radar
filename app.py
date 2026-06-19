@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Prezzi storici puri (Unadjusted Close) identici al 100% a Google Finance.")
+st.write("Sincronizzato eToro - Algoritmo di Forza Relativa a sessioni lavorative reali allineate ad Excel.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -83,7 +83,6 @@ TICKERS_CONFIG = {
     "VXX": {"Nome": "iPath S&P 500 VIX Short-Term", "Tipo": "SAT"}
 }
 
-# --- FORZATO AUTO_ADJUST=FALSE PER EVITARE DISTORSIONI DA DIVIDENDI ---
 @st.cache_data(ttl=300)
 def scarica_benchmarks_sicuri():
     benchmarks = {}
@@ -98,21 +97,18 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-def calcola_fr_rapporto_calendario(etf_series, bench_series, days):
+# --- MOTORE DI CALCOLO STRUTTURATO A RIGHE DI TRADING CONDIVISE (EQUIVALENTE A GIORNO.LAVORATIVO) ---
+def calcola_fr_rapporto_barre(etf_series, bench_series, bars):
     try:
+        # Inner Join: allinea i calendari escludendo i giorni festivi non comuni
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
-        if df_aligned.empty: return 0
+        if len(df_aligned) <= bars: return 0
         
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        oggi = pd.Timestamp.now(tz='Europe/Rome').tz_localize(None).normalize()
-        target_date = oggi - pd.Timedelta(days=days)
-        
-        idx = df_aligned.index.get_indexer([target_date], method='nearest')[0]
-        
-        etf_past = df_aligned.iloc[idx, 0]
-        bench_past = df_aligned.iloc[idx, 1]
+        etf_past = df_aligned.iloc[-(bars + 1), 0]
+        bench_past = df_aligned.iloc[-(bars + 1), 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
@@ -129,6 +125,7 @@ def elabora_radar(tickers, benchmarks):
     
     spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
     
+    # Pulizia candela live odierna parziale
     spy_clean = spy_s.iloc[:-1] if not spy_s.empty and spy_s.index[-1].strftime('%Y-%m-%d') == oggi_str else spy_s
     gld_clean = gld_s.iloc[:-1] if not gld_s.empty and gld_s.index[-1].strftime('%Y-%m-%d') == oggi_str else gld_s
     uup_clean = uup_s.iloc[:-1] if not uup_s.empty and uup_s.index[-1].strftime('%Y-%m-%d') == oggi_str else uup_s
@@ -136,7 +133,6 @@ def elabora_radar(tickers, benchmarks):
     for ticker_yahoo, info in tickers.items():
         try:
             t_obj = yf.Ticker(ticker_yahoo)
-            # FORZATO AUTO_ADJUST=FALSE PER EVITARE DISTORSIONI DA DIVIDENDI
             hist = t_obj.history(period="1y", auto_adjust=False)
             if hist.empty or len(hist) < 200: continue
             
@@ -189,17 +185,18 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            fr_spy_7  = calcola_fr_rapporto_calendario(close_closed, spy_clean, 7)
-            fr_spy_30 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 30)
-            fr_spy_90 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 90)
+            # --- APPLICAZIONE RIGIDA DELLE CORRISPONDENZE DELLE RIGHE (5, 20, 60 SESSIONI REALI) ---
+            fr_spy_7  = calcola_fr_rapporto_barre(close_closed, spy_clean, 5)
+            fr_spy_30 = calcola_fr_rapporto_barre(close_closed, spy_clean, 20)
+            fr_spy_90 = calcola_fr_rapporto_barre(close_closed, spy_clean, 60)
             
-            fr_gld_7  = calcola_fr_rapporto_calendario(close_closed, gld_clean, 7)
-            fr_gld_30 = calcola_fr_rapporto_calendario(close_closed, gld_clean, 30)
-            fr_gld_90 = calcola_fr_rapporto_calendario(close_closed, gld_clean, 90)
+            fr_gld_7  = calcola_fr_rapporto_barre(close_closed, gld_clean, 5)
+            fr_gld_30 = calcola_fr_rapporto_barre(close_closed, gld_clean, 20)
+            fr_gld_90 = calcola_fr_rapporto_barre(close_closed, gld_clean, 60)
             
-            fr_uup_7  = calcola_fr_rapporto_calendario(close_closed, uup_clean, 7)
-            fr_uup_30 = calcola_fr_rapporto_calendario(close_closed, uup_clean, 30)
-            fr_uup_90 = calcola_fr_rapporto_calendario(close_closed, uup_clean, 90)
+            fr_uup_7  = calcola_fr_rapporto_barre(close_closed, uup_clean, 5)
+            fr_uup_30 = calcola_fr_rapporto_barre(close_closed, uup_clean, 20)
+            fr_uup_90 = calcola_fr_rapporto_barre(close_closed, uup_clean, 60)
             
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
