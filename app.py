@@ -1,4 +1,4 @@
-```python
+Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -8,8 +8,6 @@ st.title("📊 Il Mio Radar Finanziario")
 st.write("Dati in tempo reale da Yahoo Finance - Logica del Super-Filtro applicata.")
 
 # --- CONFIGURAZIONE DEI TUOI TICKER (Fase di Test) ---
-# Qui puoi modificare le estensioni (.MI = Milano, .DE = Germania, senza nulla = USA)
-# Puoi cambiare CORE/SAT e il Punteggio Qualità direttamente da qui.
 TICKERS_CONFIG = {
     "ISAC.MI": {"Nome": "ISAC (Msci World AC)", "Tipo": "CORE", "Qualita": 1.00},
     "EIMI.MI": {"Nome": "EIMI (Emerging Markets)", "Tipo": "SAT", "Qualita": 0.70},
@@ -18,16 +16,17 @@ TICKERS_CONFIG = {
     "INDA":    {"Nome": "INDA (MSCI India)", "Tipo": "SAT", "Qualita": 0.65}
 }
 
-@st.cache_data(ttl=3600)  # Aggiorna i dati ogni ora per non saturare il server
+@st.cache_data(ttl=3600)  # Aggiorna i dati ogni ora
 def carica_dati_finanziari(tickers):
     data_list = []
     for ticker_yahoo, info in tickers.items():
         try:
-            # Scarica lo storico degli ultimi 300 giorni lavorativi per calcolare la media a 200
             ticker_obj = yf.Ticker(ticker_yahoo)
             hist = ticker_obj.history(period="15mo")
             
-            if hist.empty:
+            # CONTROLLO DI SICUREZZA: Se la tabella è vuota o manca la colonna 'Close', salta il titolo
+            if hist.empty or 'Close' not in hist.columns or len(hist) < 200:
+                st.warning(f"⚠️ Dati parziali o non disponibili per {ticker_yahoo} su Yahoo Finance al momento. Saltato.")
                 continue
                 
             prezzo_attuale = hist['Close'].iloc[-1]
@@ -37,6 +36,10 @@ def carica_dati_finanziari(tickers):
             sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
             std20 = hist['Close'].rolling(window=20).std().iloc[-1]
             
+            # Evitiamo divisioni per zero se la deviazione standard è nulla
+            if std20 == 0:
+                continue
+                
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
             
@@ -57,13 +60,15 @@ def carica_dati_finanziari(tickers):
                 "Trend 200": trend
             })
         except Exception as e:
-            st.error(f"Errore nel caricamento di {ticker_yahoo}: {e}")
+            # Non bloccare l'intera app se un singolo ticker fallisce
+            pass
+            
     return pd.DataFrame(data_list)
 
 # Scaricamento dati
 df = carica_dati_finanziari(TICKERS_CONFIG)
 
-# --- APPLICAZIONE DEL SUPER-FILTRO (La tua formula Excel tradotta in Python) ---
+# --- APPLICAZIONE DEL SUPER-FILTRO ---
 def calcola_super_filtro(row):
     c2 = row['Tipo']
     q2 = row['%B']
@@ -100,11 +105,7 @@ def calcola_super_filtro(row):
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
-    
-    # Formatto la tabella per lo schermo
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo", "Trend 200", "%B", "IL SUPER-FILTRO"]]
-    
-    # Mostro la tabella interattiva sul sito
     st.dataframe(df_visualizzazione.style.set_properties(**{'text-align': 'center'}), use_container_width=True)
 else:
-    st.warning("Nessun dato caricato. Controlla i ticker.")
+    st.warning("Nessun dato valido estratto. Verifica i ticker configurati.")
