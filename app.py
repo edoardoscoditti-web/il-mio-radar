@@ -1,10 +1,11 @@
+Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Layout compatto con barre di scorrimento sempre visibili in primo piano.")
+st.write("Sincronizzato eToro - Altezza verticale ampliata a 650px per una maggiore visibilità dei titoli.")
 
 # ==============================================================================
 # 🗂️ IL TUO DATABASE TITOLI COMPLETO (60+ ETF Originari + 6 Nuovi Tedeschi)
@@ -303,7 +304,7 @@ if not df.empty:
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
-    # NOTA: L'ALTEZZA È STATA CAMBIATA DA 850 A 500 PIXEL
+    # MODIFICATO DA 500 A 650 PIXEL PER UNA COMODA LETTURA VERTICALE
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
                                 .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
@@ -317,7 +318,7 @@ if not df.empty:
             "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="small"),
         },
         use_container_width=True,
-        height=500,
+        height=650,
         hide_index=True
     )
 else:
