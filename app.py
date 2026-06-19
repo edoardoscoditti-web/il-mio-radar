@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Altezza verticale ampliata a 650px per una maggiore visibilità dei titoli.")
+st.write("Sincronizzato eToro - Logica Super-Filtro corretta e allineata al 100% con la formula Excel.")
 
 # ==============================================================================
 # 🗂️ IL TUO DATABASE TITOLI COMPLETO (60+ ETF Originari + 6 Nuovi Tedeschi)
@@ -149,7 +149,7 @@ def elabora_radar(tickers, benchmarks):
             elif prezzo_attuale <= bollinger_inf: alert_bande = "💥 TOCCO INF"
             else: alert_bande = "In range"
             
-            # --- RSI SEMPLIFICATO (Z-SCORE EXCEL) ---
+            # --- RSI SEMPLIFICATO (Z-SCORE EXCEL COLONNA M) ---
             close_30 = close_s.tail(30)
             media_30 = close_30.mean()
             dev_st_30 = close_30.std()
@@ -161,12 +161,12 @@ def elabora_radar(tickers, benchmarks):
             tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            # --- VOLUME CHECK (FORMULA EXCEL) ---
+            # --- VOLUME CHECK ---
             vol_attuale = volume_s.iloc[-1]
             vol_avg30 = volume_s.tail(30).mean()
             vol_check = "✅ VOLUME ALTO" if vol_attuale > vol_avg30 else "⚠️ VOL. BASSO"
             
-            # --- MINI GRAFICI HISTORICAL ---
+            # --- MINI GRAFICI ---
             trend_7g_list = close_s.tail(7).tolist()
             trend_30g_list = close_s.tail(30).tolist()
             
@@ -228,23 +228,42 @@ def elabora_radar(tickers, benchmarks):
 benchmarks = scarica_benchmarks_sicuri()
 df = elabora_radar(TICKERS_CONFIG, benchmarks)
 
+# ==============================================================================
+# 🧠 TRADUZIONE ESATTA AL 100% DELLA TUA FORMULA EXCEL NEI CALCOLI DI PYTHON
+# ==============================================================================
 def calcola_super_filtro(row):
-    c2, q2, u2, m2, g2 = row['Tipo'], row['%B'], row['Trend 200'], row['MMA 20'], row['Qualità ⭐']
+    c2 = row['Tipo']                 # C: PROFILO (CORE o SAT)
+    q2 = row['%B']                   # Q: %B (POSIZIONE)
+    u2 = row['Trend 200']            # U: TREND ANNUALE (🐂 BULL o 🐻 BEAR)
+    m2 = row['RSI Semplificato']     # M: RSI SEMPLIFICATO (Dalla tua formula Excel!)
+    g2 = row['Qualità ⭐']           # G: Punteggio qualità ⭐
+    
     if c2 == "CORE":
-        if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40: return "🚀 VAI! (Pullback CORE)"
-        elif q2 < 0.55 and m2 > 40: return "🤔 VALUTA (Osserva CORE)"
-        else: return "❌ STAI FERMO"
-    else:
-        if g2 >= 0.75:
-            if q2 >= 0.55 and q2 <= 1 and u2 == "🐂 BULL" and m2 > 50: return "🚀 VAI! (Trend SAT)"
-            elif q2 >= 0.45 and m2 > 45: return "🤔 VALUTA (Osserva Trend)"
-            elif q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35: return "🚀 VAI! (PULLBACK PREMIUM)"
-            elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback Premium)"
-            else: return "❌ STAI FERMO"
+        if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40:
+            return "🚀 VAI! (Pullback CORE)"
+        elif q2 < 0.55 and m2 > 40:
+            return "🤔 VALUTA (Osserva CORE)"
         else:
-            if q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35: return "🚀 VAI! (Pullback SAT)"
-            elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
-            else: return "❌ STAI FERMO"
+            return "❌ STAI FERMO"
+    else: # SATELLITI (SAT)
+        if g2 >= 0.75:
+            if q2 >= 0.55 and q2 <= 1.0 and u2 == "🐂 BULL" and m2 > 50:
+                return "🚀 VAI! (Trend SAT)"
+            elif q2 >= 0.45 and m2 > 45:
+                return "🤔 VALUTA (Osserva Trend)"
+            elif q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35:
+                return "🚀 VAI! (PULLBACK PREMIUM)"
+            elif q2 < 0.35 and m2 > 35:
+                return "🤔 VALUTA (Osserva Pullback Premium)"
+            else:
+                return "❌ STAI FERMO"
+        else: # SAT con Qualità < 75%
+            if q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35:
+                return "🚀 VAI! (Pullback SAT)"
+            elif q2 < 0.35 and m2 > 35:
+                return "🤔 VALUTA (Osserva Pullback)"
+            else:
+                return "❌ STAI FERMO"
 
 # --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
@@ -303,7 +322,6 @@ if not df.empty:
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
-    # MODIFICATO DA 500 A 650 PIXEL PER UNA COMODA LETTURA VERTICALE
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
                                 .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
