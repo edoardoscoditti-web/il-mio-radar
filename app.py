@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Lista unificata: Ticker eToro ($) + Ticker Xetra (€) - Formula Intermarket & Layout Completo.")
+st.write("Sincronizzato eToro - Layout compatto con barre di scorrimento sempre visibili in primo piano.")
 
 # ==============================================================================
 # 🗂️ IL TUO DATABASE TITOLI COMPLETO (60+ ETF Originari + 6 Nuovi Tedeschi)
@@ -170,7 +170,7 @@ def elabora_radar(tickers, benchmarks):
             trend_7g_list = close_s.tail(7).tolist()
             trend_30g_list = close_s.tail(30).tolist()
             
-            # --- STATO MERCATO COMPRESO GERMANIA (.DE) ---
+            # --- STATO MERCATO ---
             sma200 = close_s.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
@@ -303,6 +303,7 @@ if not df.empty:
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
+    # NOTA: L'ALTEZZA È STATA CAMBIATA DA 850 A 500 PIXEL
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
                                 .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
@@ -316,7 +317,7 @@ if not df.empty:
             "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="small"),
         },
         use_container_width=True,
-        height=850,
+        height=500,
         hide_index=True
     )
 else:
