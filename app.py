@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo eToro", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Layout con trend a 7G e 30G in formato mini compatto.")
+st.write("Sincronizzato eToro - Integrazione dell'RSI Semplificato (Z-Score 30GG) a fianco del %B.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -136,25 +136,31 @@ def elabora_radar(tickers, benchmarks):
             elif prezzo_attuale <= bollinger_inf: alert_bande = "💥 TOCCO INF"
             else: alert_bande = "In range"
             
+            # --- FORMULA CALCOLO RSI SEMPLIFICATO (IDENTICA AL TUO EXCEL) ---
+            close_30 = close_s.tail(30)
+            media_30 = close_30.mean()
+            dev_st_30 = close_30.std()
+            if dev_st_30 > 0:
+                rsi_semplificato = 50 + (10 * (prezzo_attuale - media_30) / dev_st_30)
+            else:
+                rsi_semplificato = 50
+            
             # --- VOLATILITÀ (BANDWIDTH & ATR) ---
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
             prev_close = close_s.shift(1)
             tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            # --- VOLUME CHECK (SE VOLUME > VOLUMEAVG) ---
+            # --- VOLUME CHECK ---
             vol_attuale = volume_s.iloc[-1]
             vol_avg30 = volume_s.tail(30).mean()
-            if vol_attuale > vol_avg30:
-                vol_check = "✅ VOLUME ALTO"
-            else:
-                vol_check = "⚠️ VOL. BASSO"
+            vol_check = "✅ VOLUME ALTO" if vol_attuale > vol_avg30 else "⚠️ VOL. BASSO"
             
             # --- HISTORICAL LISTS PER MINI GRAFICI ---
             trend_7g_list = close_s.tail(7).tolist()
             trend_30g_list = close_s.tail(30).tolist()
             
-            # --- STATO MERCATO ---
+            # --- STATO MERCATO & TREND LUNGO TERMINE ---
             sma200 = close_s.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
@@ -187,6 +193,7 @@ def elabora_radar(tickers, benchmarks):
                 "Ticker": ticker_yahoo,
                 "Nome": info["Nome"],
                 "Tipo": info["Tipo"],
+                "IL SUPER-FILTRO": "", # Sarà popolata sotto
                 "Qualità ⭐": round(qualita, 3),
                 "Prezzo ($)": round(prezzo_attuale, 2),
                 "Var. Giornaliera": var_giornaliera,
@@ -194,13 +201,16 @@ def elabora_radar(tickers, benchmarks):
                 "ALERT BANDE": alert_bande,
                 "Trend 7G": trend_7g_list,
                 "Trend 30G": trend_30g_list,
+                "Trend 200": trend_200,
                 "VOLUME CHECK": vol_check,
                 "Bandwidth": bandwidth,
                 "ATR": round(atr, 2),
                 "FR vs SPY 7g": fr_spy_7, "FR vs SPY 30g": fr_spy_30, "FR vs SPY 90g": fr_spy_90,
                 "FR vs ORO 7g": fr_gld_7, "FR vs ORO 30g": fr_gld_30, "FR vs ORO 90g": fr_gld_90,
                 "FR vs USD 7g": fr_uup_7, "FR vs USD 30g": fr_uup_30, "FR vs USD 90g": fr_uup_90,
-                "Trend 200": trend_200, "%B": round(percent_b, 2), "MMA 20": round(sma20, 2)
+                "RSI Semplificato": round(rsi_semplificato, 1),
+                "%B": round(percent_b, 2),
+                "MMA 20": round(sma20, 2)
             })
         except: pass
     return pd.DataFrame(data_list)
@@ -268,23 +278,27 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    # Lista colonne aggiornata con Trend 7G inserito prima di Trend 30G
+    # POSIZIONAMENTO COLONNE: RSI Semplificato inserito subito prima di %B e MMA 20
     colonne_finali = [
         "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato",
-        "ALERT BANDE", "Trend 7G", "Trend 30G", "VOLUME CHECK", "Bandwidth", "ATR",
+        "ALERT BANDE", "Trend 7G", "Trend 30G", "Trend 200", "VOLUME CHECK", "Bandwidth", "ATR",
         "FR vs SPY 7g", "FR vs SPY 30g", "FR vs SPY 90g",
         "FR vs ORO 7g", "FR vs ORO 30g", "FR vs ORO 90g",
         "FR vs USD 7g", "FR vs USD 30g", "FR vs USD 90g",
-        "Trend 200", "%B", "MMA 20"
+        "RSI Semplificato", "%B", "MMA 20"
     ]
     
     df_visualizzazione = df[colonne_finali]
     
-    formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}", "Bandwidth": "{:.1%}"}
+    formati_percentuali = {
+        "Qualità ⭐": "{:.0%}", 
+        "Var. Giornaliera": "{:+.2%}", 
+        "Bandwidth": "{:.1%}",
+        "RSI Semplificato": "{:.1f}"
+    }
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
-    # ABBIAMO IMPOSTATO WIDTH="SMALL" PER ENTRAMBI I MINI GRAFICI
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
                                 .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
