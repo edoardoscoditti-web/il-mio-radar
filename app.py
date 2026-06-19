@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Radar Intermarket eToro", layout="wide")
 st.title("🚀 Il Mio Radar Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Ordinamento per Priorità Strategica e Colori Soft.")
+st.write("Sincronizzato eToro - Ordinamento e Colori rigorosamente separati per Azione Operativa.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -173,7 +173,7 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- REGOLE COLORE PERSONALIZZATE ---
+# --- REGOLE VISIVE AGGIORNATE E BLINDATE ---
 def color_var_text(val):
     if val > 0: return 'color: #2e7d32; font-weight: bold;'
     elif val < 0: return 'color: #c62828; font-weight: bold;'
@@ -181,29 +181,32 @@ def color_var_text(val):
 
 def colora_segnali_soft(val):
     val_str = str(val)
-    if "Pullback" in val_str or "PULLBACK" in val_str:
-        return 'background-color: #1b5e20; color: white; font-weight: bold;' # Verde scuro istituzionale
-    elif "Trend" in val_str:
-        return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;' # Verde chiarissimo pastello
-    elif "VALUTA" in val_str:
+    # Controlliamo PRIMA se c'è l'azione reale di acquisto "🚀 VAI!"
+    if "🚀 VAI!" in val_str:
+        if "Pullback" in val_str or "PULLBACK" in val_str:
+            return 'background-color: #1b5e20; color: white; font-weight: bold;' # Verde scuro per Pullback operativi
+        elif "Trend" in val_str:
+            return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold;' # Verde chiaro per Trend operativi
+    elif "🤔 VALUTA" in val_str:
         return 'background-color: #fff9c4; color: #f57f17;' # Giallo pastello tenue
-    elif "STAI FERMO" in val_str:
+    elif "❌ STAI FERMO" in val_str:
         return 'background-color: #ffcdd2; color: #b71c1c;' # Rosso pastello tenue
     return ''
 
-# --- FUNZIONE DI ORDINAMENTO STRATEGICO ---
+# --- FUNZIONE DI ORDINAMENTO STRATEGICO RIGIDA ---
 def assegna_priorita(val):
     val_str = str(val)
-    if "Pullback" in val_str or "PULLBACK" in val_str: return 1
-    elif "Trend" in val_str: return 2
-    elif "VALUTA" in val_str: return 3
-    return 4
+    if "🚀 VAI!" in val_str:
+        if "Pullback" in val_str or "PULLBACK" in val_str: return 1  # 1° Posto: I segnali di acquisto sui Pullback
+        elif "Trend" in val_str: return 2                          # 2° Posto: I segnali di acquisto sul Trend
+    elif "🤔 VALUTA" in val_str: return 3                           # 3° Posto: Tutti gli "Osserva/Valuta" (Gialli)
+    return 4                                                        # 4° Posto: I "Stai fermo" (Rossi)
 
 if not df.empty:
     df['IL SUPER-FILTRO'] = df.apply(calcola_super_filtro, axis=1)
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     
-    # Ordina prima per segnale strategico e poi per punteggio qualità decrescente
+    # Ordina per priorità d'azione rigida (1, 2, 3, 4) e poi per Punteggio Qualità
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Trend 200", "%B", "IL SUPER-FILTRO"]]
