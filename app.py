@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-st.set_page_config(page_title="Terminale Quantitativo eToro", layout="wide")
-st.title("📊 Il Mio Terminale Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Integrazione dell'RSI Semplificato (Z-Score 30GG) a fianco del %B.")
+st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
+st.title("📊 Il Mio Terminale Quantitativo Master")
+st.write("Lista unificata: Ticker eToro ($) + Ticker Xetra (€) - Formula Intermarket & Layout Completo.")
 
-# --- CONFIGURAZIONE TICKER ---
+# ==============================================================================
+# 🗂️ IL TUO DATABASE TITOLI COMPLETO (60+ ETF Originari + 6 Nuovi Tedeschi)
+# ==============================================================================
 TICKERS_CONFIG = {
+    # --- I TUOI CORE ORIGINARI ---
     "SWDA.L": {"Nome": "iShares Core MSCI World", "Tipo": "CORE"},
     "ISAC.L": {"Nome": "iShares MSCI ACWI", "Tipo": "CORE"},
     "CSPX.L": {"Nome": "iShares Core S&P 500", "Tipo": "CORE"},
@@ -16,15 +19,25 @@ TICKERS_CONFIG = {
     "EIMI.L": {"Nome": "iShares Core MSCI EM IMI", "Tipo": "CORE"},
     "MEUD.PA": {"Nome": "Amundi STOXX Europe 600", "Tipo": "CORE"},
     "IMEU.L": {"Nome": "iShares Core MSCI Europe", "Tipo": "CORE"},
+    "VTV": {"Nome": "Vanguard Value (USA)", "Tipo": "CORE"},
+    "VGK": {"Nome": "Vanguard FTSE Europe", "Tipo": "CORE"},
+    "IJPA.L": {"Nome": "iShares MSCI Japan", "Tipo": "CORE"},
+    "EWJ": {"Nome": "iShares MSCI Japan ETF (USA)", "Tipo": "CORE"},
+    
+    # --- I NUOVI TITOLI TEDESCHI BORSA XETRA (.DE) ---
+    "ESPO.DE": {"Nome": "VanEck Video Gaming & Esports UCITS", "Tipo": "SAT"},
+    "IUSN.DE": {"Nome": "iShares MSCI World Small Cap UCITS", "Tipo": "CORE"},
+    "IS3N.DE": {"Nome": "iShares Core MSCI EM IMI UCITS", "Tipo": "CORE"},
+    "IS3Q.DE": {"Nome": "iShares MSCI World Quality Factor", "Tipo": "SAT"},
+    "IS3S.DE": {"Nome": "iShares MSCI World Value Factor", "Tipo": "SAT"},
+    "HDX1.DE": {"Nome": "L&G DAX Daily 2x Long UCITS (Leva)", "Tipo": "SAT"},
+
+    # --- I TUOI SATELLITI ORIGINARI ---
     "WDEF.L": {"Nome": "WisdomTree Europe Defence", "Tipo": "SAT"},
     "VUG": {"Nome": "Vanguard Growth (USA)", "Tipo": "SAT"},
     "VAPU.L": {"Nome": "Vanguard FTSE Asia Pacific", "Tipo": "SAT"},
     "ITA": {"Nome": "iShares US Aerospace & Defense", "Tipo": "SAT"},
-    "VTV": {"Nome": "Vanguard Value (USA)", "Tipo": "CORE"},
     "FEZ": {"Nome": "SPDR Euro STOXX 50 (Top 50)", "Tipo": "SAT"},
-    "VGK": {"Nome": "Vanguard FTSE Europe", "Tipo": "CORE"},
-    "IJPA.L": {"Nome": "iShares MSCI Japan", "Tipo": "CORE"},
-    "EWJ": {"Nome": "iShares MSCI Japan ETF (USA)", "Tipo": "CORE"},
     "DXJA.L": {"Nome": "WisdomTree Japan Equity Hedged", "Tipo": "SAT"},
     "INDA": {"Nome": "iShares MSCI India", "Tipo": "SAT"},
     "EWT": {"Nome": "iShares MSCI Taiwan", "Tipo": "SAT"},
@@ -136,36 +149,33 @@ def elabora_radar(tickers, benchmarks):
             elif prezzo_attuale <= bollinger_inf: alert_bande = "💥 TOCCO INF"
             else: alert_bande = "In range"
             
-            # --- FORMULA CALCOLO RSI SEMPLIFICATO (IDENTICA AL TUO EXCEL) ---
+            # --- RSI SEMPLIFICATO (Z-SCORE EXCEL) ---
             close_30 = close_s.tail(30)
             media_30 = close_30.mean()
             dev_st_30 = close_30.std()
-            if dev_st_30 > 0:
-                rsi_semplificato = 50 + (10 * (prezzo_attuale - media_30) / dev_st_30)
-            else:
-                rsi_semplificato = 50
+            rsi_semplificato = 50 + (10 * (prezzo_attuale - media_30) / dev_st_30) if dev_st_30 > 0 else 50
             
-            # --- VOLATILITÀ (BANDWIDTH & ATR) ---
+            # --- VOLATILITÀ ---
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
             prev_close = close_s.shift(1)
             tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            # --- VOLUME CHECK ---
+            # --- VOLUME CHECK (FORMULA EXCEL) ---
             vol_attuale = volume_s.iloc[-1]
             vol_avg30 = volume_s.tail(30).mean()
             vol_check = "✅ VOLUME ALTO" if vol_attuale > vol_avg30 else "⚠️ VOL. BASSO"
             
-            # --- HISTORICAL LISTS PER MINI GRAFICI ---
+            # --- MINI GRAFICI HISTORICAL ---
             trend_7g_list = close_s.tail(7).tolist()
             trend_30g_list = close_s.tail(30).tolist()
             
-            # --- STATO MERCATO & TREND LUNGO TERMINE ---
+            # --- STATO MERCATO COMPRESO GERMANIA (.DE) ---
             sma200 = close_s.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
             else:
-                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS"]):
+                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE"]):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
@@ -193,9 +203,9 @@ def elabora_radar(tickers, benchmarks):
                 "Ticker": ticker_yahoo,
                 "Nome": info["Nome"],
                 "Tipo": info["Tipo"],
-                "IL SUPER-FILTRO": "", # Sarà popolata sotto
+                "IL SUPER-FILTRO": "", 
                 "Qualità ⭐": round(qualita, 3),
-                "Prezzo ($)": round(prezzo_attuale, 2),
+                "Prezzo": round(prezzo_attuale, 2),
                 "Var. Giornaliera": var_giornaliera,
                 "Stato Mercato": stato_mercato,
                 "ALERT BANDE": alert_bande,
@@ -278,9 +288,8 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    # POSIZIONAMENTO COLONNE: RSI Semplificato inserito subito prima di %B e MMA 20
     colonne_finali = [
-        "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato",
+        "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Qualità ⭐", "Prezzo", "Var. Giornaliera", "Stato Mercato",
         "ALERT BANDE", "Trend 7G", "Trend 30G", "Trend 200", "VOLUME CHECK", "Bandwidth", "ATR",
         "FR vs SPY 7g", "FR vs SPY 30g", "FR vs SPY 90g",
         "FR vs ORO 7g", "FR vs ORO 30g", "FR vs ORO 90g",
@@ -290,12 +299,7 @@ if not df.empty:
     
     df_visualizzazione = df[colonne_finali]
     
-    formati_percentuali = {
-        "Qualità ⭐": "{:.0%}", 
-        "Var. Giornaliera": "{:+.2%}", 
-        "Bandwidth": "{:.1%}",
-        "RSI Semplificato": "{:.1f}"
-    }
+    formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}", "Bandwidth": "{:.1%}"}
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
