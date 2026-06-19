@@ -22,7 +22,6 @@ def carica_dati_finanziari(tickers):
     for ticker_yahoo, info in tickers.items():
         try:
             ticker_obj = yf.Ticker(ticker_yahoo)
-            # USIAMO "2y" (2 anni), che è un parametro standard accettato da Yahoo
             hist = ticker_obj.history(period="2y")
             
             if hist.empty or 'Close' not in hist.columns or len(hist) < 200:
@@ -105,4 +104,4 @@ if not df.empty:
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo", "Trend 200", "%B", "IL SUPER-FILTRO"]]
     st.dataframe(df_visualizzazione.style.set_properties(**{'text-align': 'center'}), use_container_width=True)
 else:
-    st.warning("Nessun dato valido estratto. I server di Yahoo stanno rifiutando le co
+    st.warning("Errore nel caricamento dei ticker.")
