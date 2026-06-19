@@ -1,13 +1,3 @@
-Certamente! Cambiare "SEGNALE eTORO" con una dicitura più istituzionale dà subito all'applicazione un aspetto da vero software per investitori professionisti.
-
-Ho sostituito il termine con Setup Operativo (e ho rinominato internamente anche la funzione di colorazione in colora_setup_operativo).
-
-Ti confermo ancora una volta che tutte le formule, i calcoli geometrici e la logica del "IL SUPER-FILTRO" sono rimasti totalmente invariati e intatti.
-
-🛠️ Il Codice Aggiornato con Dicitura Professionale (app.py)
-Torna su GitHub, modifica il file app.py con la matita, cancella tutto il testo e incolla questa versione pulita e definitiva:
-
-Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
