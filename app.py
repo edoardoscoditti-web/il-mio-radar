@@ -7,7 +7,7 @@ st.set_page_config(page_title="Il Mio Radar Quantitativo", layout="wide")
 st.title("📊 Il Mio Radar Finanziario")
 st.write("Dati in tempo reale da Yahoo Finance - Logica del Super-Filtro applicata.")
 
-# --- CONFIGURAZIONE DEI TUOI TICKER (Fase di Test) ---
+# --- CONFIGURAZIONE DEI TUOI TICKER ---
 TICKERS_CONFIG = {
     "ISAC.MI": {"Nome": "ISAC (Msci World AC)", "Tipo": "CORE", "Qualita": 1.00},
     "EIMI.MI": {"Nome": "EIMI (Emerging Markets)", "Tipo": "SAT", "Qualita": 0.70},
@@ -22,11 +22,10 @@ def carica_dati_finanziari(tickers):
     for ticker_yahoo, info in tickers.items():
         try:
             ticker_obj = yf.Ticker(ticker_yahoo)
-            hist = ticker_obj.history(period="15mo")
+            # USIAMO "2y" (2 anni), che è un parametro standard accettato da Yahoo
+            hist = ticker_obj.history(period="2y")
             
-            # CONTROLLO DI SICUREZZA: Se la tabella è vuota o manca la colonna 'Close', salta il titolo
             if hist.empty or 'Close' not in hist.columns or len(hist) < 200:
-                st.warning(f"⚠️ Dati parziali o non disponibili per {ticker_yahoo} su Yahoo Finance al momento. Saltato.")
                 continue
                 
             prezzo_attuale = hist['Close'].iloc[-1]
@@ -36,8 +35,7 @@ def carica_dati_finanziari(tickers):
             sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
             std20 = hist['Close'].rolling(window=20).std().iloc[-1]
             
-            # Evitiamo divisioni per zero se la deviazione standard è nulla
-            if std20 == 0:
+            if std20 == 0 or pd.isna(sma200) or pd.isna(sma20):
                 continue
                 
             bollinger_sup = sma20 + (2 * std20)
@@ -60,7 +58,6 @@ def carica_dati_finanziari(tickers):
                 "Trend 200": trend
             })
         except Exception as e:
-            # Non bloccare l'intera app se un singolo ticker fallisce
             pass
             
     return pd.DataFrame(data_list)
@@ -108,4 +105,4 @@ if not df.empty:
     df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità", "Prezzo", "Trend 200", "%B", "IL SUPER-FILTRO"]]
     st.dataframe(df_visualizzazione.style.set_properties(**{'text-align': 'center'}), use_container_width=True)
 else:
-    st.warning("Nessun dato valido estratto. Verifica i ticker configurati.")
+    st.warning("Nessun dato valido estratto. I server di Yahoo stanno rifiutando le co
