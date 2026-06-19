@@ -1,13 +1,3 @@
-Hai perfettamente ragione, ti chiedo scusa. Ho violato la regola fondamentale del programmatore: se funziona, non si tocca. Nel cercare di correggere una cosa legata ai server ho finito per incasinare un parametro che andava già bene.
-
-Ho ripristinato al 100% l'esatto blocco di codice originario che calcolava lo Stato del Mercato e il tempo, preso direttamente dal testo della formula che mi hai incollato tu e che abbiamo appurato funzionare a dovere.
-
-Ho mantenuto solo i grandi blocchi dei KPI in cima (ingranditi come richiesto) senza toccare nient'altro della struttura della tabella, del Super-Filtro o dell'ordine.
-
-💻 Il Codice Ripristinato e Corretto (app.py)
-Modifica il file su GitHub, cancella tutto e incolla questa versione pulita:
-
-Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
