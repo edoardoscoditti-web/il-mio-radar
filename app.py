@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import pandas as pd
 import yfinance as yf
 import numpy as np
@@ -7,7 +7,7 @@ import numpy as np
 st.set_page_config(page_title="Quant Terminal", layout="wide", initial_sidebar_state="collapsed")
 
 # ==============================================================================
-# 🗂️ DATABASE TITOLI COMPLETO
+# 🗂️ DATABASE TITOLI COMPLETO (Sincronizzato eToro + Nuovi ETF Xetra)
 # ==============================================================================
 TICKERS_CONFIG = {
     # --- CORE ORIGINARI ---
@@ -58,7 +58,7 @@ TICKERS_CONFIG = {
     "WTAI.L": {"Nome": "Amundi MSCI Digital Economy", "Tipo": "SAT"},
     "CYBR.L": {"Nome": "iShares Digital Security", "Tipo": "SAT"},
     "WQTM": {"Nome": "World Quality Momentum", "Tipo": "SAT"},
-    "XLF": {"Financial Select Sector SPDR": "Financial Select Sector SPDR", "Tipo": "SAT"},
+    "XLF": {"Nome": "Financial Select Sector SPDR", "Tipo": "SAT"},
     "BNKE.PA": {"Nome": "Lyxor MSCI Europe Banks", "Tipo": "SAT"},
     "BLOK": {"Nome": "Amplify Data Sharing & Blockchain", "Tipo": "SAT"},
     "XLE": {"Nome": "Energy Select Sector SPDR", "Tipo": "SAT"},
@@ -97,6 +97,7 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
+# --- MOTORE GEOMETRICO ORIGINARIO ---
 def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
     try:
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
@@ -110,19 +111,18 @@ def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
         bench_past = df_aligned.iloc[idx_past, 1]
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
-    except: return 0
+    except:
+        return 0
 
 @st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
     data_list = []
     
-    # --- CALCOLO TIMING LIVE CON FUSO ITALIANO ---
     ora_it = pd.Timestamp.now(tz='Europe/Rome')
     giorno_settimana = ora_it.dayofweek
     ora_decimale = ora_it.hour + ora_it.minute / 60.0
-    oggi_str = ora_it.strftime('%m-%d') # Formato Mese-Giorno per controllo feste
+    oggi_str = ora_it.strftime('%m-%d')
     
-    # DATABASE FESTIVITA' REALI BORSE APERTE/CHIUSE 2026
     FESTE_USA = ["01-01", "01-19", "02-16", "04-03", "05-25", "06-19", "07-03", "09-07", "11-26", "12-25"]
     FESTE_EU  = ["01-01", "04-03", "04-06", "05-01", "12-25", "12-26"]
     
@@ -146,7 +146,7 @@ def elabora_radar(tickers, benchmarks):
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- CALCOLO INDICATORI OPERATIVI ---
+            # --- CALCOLO NUOVI SETUP OPERATIVI ---
             ema12 = close_series.ewm(span=12, adjust=False).mean()
             ema26 = close_series.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
@@ -182,7 +182,20 @@ def elabora_radar(tickers, benchmarks):
             else:
                 trend_anticipato = "Rialzista" if ema9.iloc[-1] > ema21.iloc[-1] else "Ribassista"
 
-            # --- INDICATORI TECNICI ORIGINARI ---
+            # --- TRADUZIONE ESATTA DELLA FORMULA EXCEL DEI VOLUMI ---
+            vol_attuale = hist['Volume'].iloc[-1]
+            vol_medio = hist['Volume'].tail(30).mean() # volumeavg standard di 30 giorni
+            vol_ratio = vol_attuale / vol_medio if vol_medio > 0 else 0
+            
+            if vol_ratio > 1.5:
+                if var_giornaliera > 0:
+                    vol_check = f"{vol_ratio:.2f} 🟢 ACCUMULO"
+                else:
+                    vol_check = f"{vol_ratio:.2f} 🔴 FUGA (Short)"
+            else:
+                vol_check = f"{vol_ratio:.2f}"
+
+            # --- VECCHI INDICATORI TECNICI ORIGINARI ---
             sma20 = close_series.rolling(window=20).mean().iloc[-1]
             std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
@@ -193,25 +206,20 @@ def elabora_radar(tickers, benchmarks):
             close_30 = close_series.tail(30)
             rsi_semplificato = 50 + (10 * (prezzo_attuale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
-            prev_close = close_series.shift(1)
-            tr = pd.concat([hist['High'] - hist['Low'], (hist['High'] - prev_close).abs(), (hist['Low'] - prev_close).abs()], axis=1).max(axis=1)
-            atr = tr.rolling(window=14).mean().iloc[-1]
-            vol_check = "✅ VOLUME ALTO" if hist['Volume'].iloc[-1] > hist['Volume'].tail(30).mean() else "⚠️ VOL. BASSO"
+            
             trend_7g_list = close_series.tail(7).tolist()
             trend_30g_list = close_series.tail(30).tolist()
             sma200 = close_series.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
-            # --- CONTROLLO INTEGRATO STATO MERCATO + HOLIDAYS ---
             is_europeo = any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE", ".MI"])
-            
             if giorno_settimana >= 5: 
                 stato_mercato = "🔴 CHIUSO"
             elif is_europeo:
                 if oggi_str in FESTE_EU: stato_mercato = "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
-            else: # Titolo USA
-                if oggi_str in FESTE_USA: stato_mercato = "🔴 CHIUSO" # Blocca se Juneteenth o altro festivo
+            else:
+                if oggi_str in FESTE_USA: stato_mercato = "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
             fr_spy_7  = calcola_fr_geometrica(close_series, spy_clean, 7)
@@ -239,7 +247,7 @@ def elabora_radar(tickers, benchmarks):
                 "Ticker": ticker_yahoo, "Nome": info["Nome"], "Tipo": info["Tipo"], "IL SUPER-FILTRO": "", 
                 "Setup Operativo": setup_operativo, "Trend Anticipato ⚡": trend_anticipato,
                 "Qualità ⭐": round(qualita, 3), "Prezzo": round(prezzo_attuale, 2), "Var. Giornaliera": var_giornaliera, "Stato Mercato": stato_mercato,
-                "ALERT BANDE": alert_bande, "Trend 7G": trend_7g_list, "Trend 30G": trend_30g_list, "Trend 200": trend_200, "VOLUME CHECK": vol_check, "Bandwidth": bandwidth, "ATR": round(atr, 2),
+                "ALERT BANDE": alert_bande, "Trend 7G": trend_7g_list, "Trend 30G": trend_30g_list, "Trend 200": trend_200, "VOLUME CHECK": vol_check, "Bandwidth": bandwidth, "ATR": round(prezzo_attuale - bollinger_inf, 2),
                 "FR vs SPY 7g": fr_spy_7, "FR vs SPY 30g": fr_spy_30, "FR vs SPY 90g": fr_spy_90,
                 "FR vs ORO 7g": fr_gld_7, "FR vs ORO 30g": fr_gld_30, "FR vs ORO 90g": fr_gld_90,
                 "FR vs USD 7g": fr_uup_7, "FR vs USD 30g": fr_uup_30, "FR vs USD 90g": fr_uup_90,
@@ -295,10 +303,14 @@ def colora_alert_bande(val):
     if "TOCCO" in str(val): return 'background-color: #ffe0b2; color: #e65100; font-weight: bold;'
     return 'color: #757575;'
 
+# COLORAZIONE OTTIMIZZATA PER IL NUOVO FORMATO VOLUMI EXCEL
 def colora_volumi(val):
-    if "ALTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
-    elif "BASSO" in str(val): return 'background-color: #f5f5f5; color: #9e9e9e;'
-    return ''
+    val_str = str(val)
+    if "ACCUMULO" in val_str: 
+        return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
+    elif "FUGA" in val_str: 
+        return 'background-color: #ffebee; color: #c62828; font-weight: bold;'
+    return 'color: #757575;'
 
 def colora_segnali_soft(val):
     val_str = str(val)
