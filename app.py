@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-st.set_page_config(page_title="Radar Intermarket eToro", layout="wide")
-st.title("🚀 Il Mio Radar Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Griglia operativa pulita senza indici di riga.")
+st.set_page_config(page_title="Terminale Quantitativo eToro", layout="wide")
+st.title("📊 Il Mio Terminale Quantitativo Intermarket")
+st.write("Sincronizzato eToro - Formula Volume Check allineata al 100% con il tuo Excel.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -113,6 +113,10 @@ def elabora_radar(tickers, benchmarks):
             if hist.empty or len(hist) < 200: continue
             
             close_s = hist['Close']
+            volume_s = hist['Volume']
+            high_s = hist['High']
+            low_s = hist['Low']
+            
             if close_s.index.tz is not None: close_s = close_s.tz_localize(None)
             close_s = close_s.dropna()
             
@@ -120,35 +124,63 @@ def elabora_radar(tickers, benchmarks):
             prezzo_ieri = close_s.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            sma200 = close_s.rolling(window=200).mean().iloc[-1]
+            # --- BANDE DI BOLLINGER & ALERT ---
             sma20 = close_s.rolling(window=20).mean().iloc[-1]
             std20 = close_s.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
-            
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
             percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
-            trend = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
-            if giorno_settimana >= 5:
-                stato_mercato = "🔴 CHIUSO"
+            if prezzo_attuale >= bollinger_sup: alert_bande = "💥 TOCCO SUP"
+            elif prezzo_attuale <= bollinger_inf: alert_bande = "💥 TOCCO INF"
+            else: alert_bande = "In range"
+            
+            # --- VOLATILITÀ (BANDWIDTH & ATR) ---
+            bandwidth = (bollinger_sup - bollinger_inf) / sma20
+            prev_close = close_s.shift(1)
+            tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
+            atr = tr.rolling(window=14).mean().iloc[-1]
+            
+            # --- VOLUME CHECK (IDENTICO ALLA TUA FORMULA EXCEL SE VOLUME > VOLUMEAVG) ---
+            vol_attuale = volume_s.iloc[-1]
+            vol_avg30 = volume_s.tail(30).mean() # volumeavg di Google Finance è la media a 30 giorni
+            if vol_attuale > vol_avg30:
+                vol_check = "✅ VOLUME ALTO"
+            else:
+                vol_check = "⚠️ VOL. BASSO"
+            
+            # --- TREND 30 GIORNI (LISTA PER GRAFICO) ---
+            trend_30g_list = close_s.tail(30).tolist()
+            
+            # --- STATO MERCATO ---
+            sma200 = close_s.rolling(window=200).mean().iloc[-1]
+            trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
+            if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
             else:
                 if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS"]):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
-                else:
-                    stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
+                else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            etf_7, etf_30, etf_90 = calcola_ritorno_sicuro(close_s, 7), calcola_ritorno_sicuro(close_s, 30), calcola_ritorno_sicuro(close_s, 90)
+            # --- FORZA RELATIVA DELTA % ---
+            etf_7 = calcola_ritorno_sicuro(close_s, 7)
+            etf_30 = calcola_ritorno_sicuro(close_s, 30)
+            etf_90 = calcola_ritorno_sicuro(close_s, 90)
+            
+            fr_spy_7, fr_spy_30, fr_spy_90 = etf_7 - spy_7, etf_30 - spy_30, etf_90 - spy_90
+            fr_gld_7, fr_gld_30, fr_gld_90 = etf_7 - gld_7, etf_30 - gld_30, etf_90 - gld_90
+            fr_uup_7, fr_uup_30, fr_uup_90 = etf_7 - uup_7, etf_30 - uup_30, etf_90 - uup_90
+            
             qualita = 0.0
-            if etf_7 > spy_7: qualita += 0.15
-            if etf_30 > spy_30: qualita += 0.25
-            if etf_90 > spy_90: qualita += 0.30
-            if etf_7 > gld_7: qualita += 0.025
-            if etf_30 > gld_30: qualita += 0.050
-            if etf_90 > gld_90: qualita += 0.075
-            if etf_7 > uup_7: qualita += 0.025
-            if etf_30 > uup_30: qualita += 0.050
-            if etf_90 > uup_90: qualita += 0.075
+            if fr_spy_7 > 0: qualita += 0.15
+            if fr_spy_30 > 0: qualita += 0.25
+            if fr_spy_90 > 0: qualita += 0.30
+            if fr_gld_7 > 0: qualita += 0.025
+            if fr_gld_30 > 0: qualita += 0.050
+            if fr_gld_90 > 0: qualita += 0.075
+            if fr_uup_7 > 0: qualita += 0.025
+            if fr_uup_30 > 0: qualita += 0.050
+            if fr_uup_90 > 0: qualita += 0.075
             
             data_list.append({
                 "Ticker": ticker_yahoo,
@@ -158,9 +190,15 @@ def elabora_radar(tickers, benchmarks):
                 "Prezzo ($)": round(prezzo_attuale, 2),
                 "Var. Giornaliera": var_giornaliera,
                 "Stato Mercato": stato_mercato,
-                "MMA 20": round(sma20, 2),
-                "%B": round(percent_b, 2),
-                "Trend 200": trend
+                "ALERT BANDE": alert_bande,
+                "Trend 30G": trend_30g_list,
+                "VOLUME CHECK": vol_check,
+                "Bandwidth": bandwidth,
+                "ATR": round(atr, 2),
+                "FR vs SPY 7g": fr_spy_7, "FR vs SPY 30g": fr_spy_30, "FR vs SPY 90g": fr_spy_90,
+                "FR vs ORO 7g": fr_gld_7, "FR vs ORO 30g": fr_gld_30, "FR vs ORO 90g": fr_gld_90,
+                "FR vs USD 7g": fr_uup_7, "FR vs USD 30g": fr_uup_30, "FR vs USD 90g": fr_uup_90,
+                "Trend 200": trend_200, "%B": round(percent_b, 2), "MMA 20": round(sma20, 2)
             })
         except: pass
     return pd.DataFrame(data_list)
@@ -187,7 +225,7 @@ def calcola_super_filtro(row):
             else: return "❌ STAI FERMO"
 
 # --- STYLE FUNCTIONS ---
-def color_var_text(val):
+def color_text_red_green(val):
     if val > 0: return 'color: #2e7d32; font-weight: bold;'
     elif val < 0: return 'color: #c62828; font-weight: bold;'
     return ''
@@ -195,6 +233,15 @@ def color_var_text(val):
 def colora_stato_soft(val):
     if "APERTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
     elif "CHIUSO" in str(val): return 'background-color: #ffebee; color: #c62828;'
+    return ''
+
+def colora_alert_bande(val):
+    if "TOCCO" in str(val): return 'background-color: #ffe0b2; color: #e65100; font-weight: bold;'
+    return 'color: #757575;'
+
+def colora_volumi(val):
+    if "ALTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
+    elif "BASSO" in str(val): return 'background-color: #f5f5f5; color: #9e9e9e;'
     return ''
 
 def colora_segnali_soft(val):
@@ -219,18 +266,35 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato", "Trend 200", "%B", "IL SUPER-FILTRO"]]
+    colonne_finali = [
+        "Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato",
+        "ALERT BANDE", "Trend 30G", "VOLUME CHECK", "Bandwidth", "ATR",
+        "FR vs SPY 7g", "FR vs SPY 30g", "FR vs SPY 90g",
+        "FR vs ORO 7g", "FR vs ORO 30g", "FR vs ORO 90g",
+        "FR vs USD 7g", "FR vs USD 30g", "FR vs USD 90g",
+        "Trend 200", "%B", "IL SUPER-FILTRO"
+    ]
     
-    # AGGIUNTO IL COMANDO HIDE_INDEX=TRUE PER UN LOOK PROFESSIONALE
+    df_visualizzazione = df[colonne_finali]
+    
+    formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}", "Bandwidth": "{:.1%}"}
+    for col in colonne_finali:
+        if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
+        
     st.dataframe(
-        df_visualizzazione.style.format({"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}"})
-                                .map(color_var_text, subset=['Var. Giornaliera'])
+        df_visualizzazione.style.format(formati_percentuali)
+                                .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
                                 .map(colora_stato_soft, subset=['Stato Mercato'])
+                                .map(colora_alert_bande, subset=['ALERT BANDE'])
+                                .map(colora_volumi, subset=['VOLUME CHECK'])
                                 .map(colora_segnali_soft, subset=['IL SUPER-FILTRO'])
                                 .set_properties(**{'text-align': 'center'}),
+        column_config={
+            "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="medium"),
+        },
         use_container_width=True,
-        height=800,
+        height=850,
         hide_index=True
     )
 else:
-    st.warning("Caricamento in corso dei dati di mercato...")
+    st.warning("Caricamento del tuo terminale quantitativo completo...")
