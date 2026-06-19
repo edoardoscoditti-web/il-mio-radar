@@ -4,13 +4,13 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Logica Super-Filtro corretta e allineata al 100% con la formula Excel.")
+st.write("Sincronizzato eToro - Punteggio Qualità e Forza Relativa basati su Barre di Trading reali.")
 
 # ==============================================================================
-# 🗂️ IL TUO DATABASE TITOLI COMPLETO (60+ ETF Originari + 6 Nuovi Tedeschi)
+# 🗂️ DATABASE TITOLI COMPLETO
 # ==============================================================================
 TICKERS_CONFIG = {
-    # --- I TUOI CORE ORIGINARI ---
+    # --- CORE ORIGINARI ---
     "SWDA.L": {"Nome": "iShares Core MSCI World", "Tipo": "CORE"},
     "ISAC.L": {"Nome": "iShares MSCI ACWI", "Tipo": "CORE"},
     "CSPX.L": {"Nome": "iShares Core S&P 500", "Tipo": "CORE"},
@@ -24,7 +24,7 @@ TICKERS_CONFIG = {
     "IJPA.L": {"Nome": "iShares MSCI Japan", "Tipo": "CORE"},
     "EWJ": {"Nome": "iShares MSCI Japan ETF (USA)", "Tipo": "CORE"},
     
-    # --- I NUOVI TITOLI TEDESCHI BORSA XETRA (.DE) ---
+    # --- NUOVI TITOLI TEDESCHI BORSA XETRA (.DE) ---
     "ESPO.DE": {"Nome": "VanEck Video Gaming & Esports UCITS", "Tipo": "SAT"},
     "IUSN.DE": {"Nome": "iShares MSCI World Small Cap UCITS", "Tipo": "CORE"},
     "IS3N.DE": {"Nome": "iShares Core MSCI EM IMI UCITS", "Tipo": "CORE"},
@@ -32,7 +32,7 @@ TICKERS_CONFIG = {
     "IS3S.DE": {"Nome": "iShares MSCI World Value Factor", "Tipo": "SAT"},
     "HDX1.DE": {"Nome": "L&G DAX Daily 2x Long UCITS (Leva)", "Tipo": "SAT"},
 
-    # --- I TUOI SATELLITI ORIGINARI ---
+    # --- SATELLITI ORIGINARI ---
     "WDEF.L": {"Nome": "WisdomTree Europe Defence", "Tipo": "SAT"},
     "VUG": {"Nome": "Vanguard Growth (USA)", "Tipo": "SAT"},
     "VAPU.L": {"Nome": "Vanguard FTSE Asia Pacific", "Tipo": "SAT"},
@@ -97,13 +97,12 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-def calcola_ritorno_sicuro(series, days):
+# --- MOTORE DI CALCOLO STRUTTURATO A BARRE DI TRADING REALI ---
+def calcola_ritorno_barre(series, bars):
     try:
-        if series is None or series.empty: return 0
+        if series is None or series.empty or len(series) <= bars: return 0
         p_now = series.iloc[-1]
-        target_date = series.index[-1] - pd.Timedelta(days=days)
-        idx = series.index.get_indexer([target_date], method='nearest')[0]
-        p_past = series.iloc[idx]
+        p_past = series.iloc[-(bars + 1)]
         return (p_now / p_past) - 1 if p_past != 0 else 0
     except: return 0
 
@@ -111,9 +110,19 @@ def calcola_ritorno_sicuro(series, days):
 def elabora_radar(tickers, benchmarks):
     data_list = []
     spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
-    spy_7, spy_30, spy_90 = calcola_ritorno_sicuro(spy_s, 7), calcola_ritorno_sicuro(spy_s, 30), calcola_ritorno_sicuro(spy_s, 90)
-    gld_7, gld_30, gld_90 = calcola_ritorno_sicuro(gld_s, 7), calcola_ritorno_sicuro(gld_s, 30), calcola_ritorno_sicuro(gld_s, 90)
-    uup_7, uup_30, uup_90 = calcola_ritorno_sicuro(uup_s, 7), calcola_ritorno_sicuro(uup_s, 30), calcola_ritorno_sicuro(uup_s, 90)
+    
+    # Sincronizzazione benchmark su base barre operative (5=1sett, 21=1mese, 63=3mesi)
+    spy_7 = calcola_ritorno_barre(spy_s, 5)
+    spy_30 = calcola_ritorno_barre(spy_s, 21)
+    spy_90 = calcola_ritorno_barre(spy_s, 63)
+    
+    gld_7 = calcola_ritorno_barre(gld_s, 5)
+    gld_30 = calcola_ritorno_barre(gld_s, 21)
+    gld_90 = calcola_ritorno_barre(gld_s, 63)
+    
+    uup_7 = calcola_ritorno_barre(uup_s, 5)
+    uup_30 = calcola_ritorno_barre(uup_s, 21)
+    uup_90 = calcola_ritorno_barre(uup_s, 63)
     
     ora_it = pd.Timestamp.now(tz='Europe/Rome')
     giorno_settimana = ora_it.dayofweek
@@ -179,15 +188,16 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- FORZA RELATIVA DELTA % ---
-            etf_7 = calcola_ritorno_sicuro(close_s, 7)
-            etf_30 = calcola_ritorno_sicuro(close_s, 30)
-            etf_90 = calcola_ritorno_sicuro(close_s, 90)
+            # --- CALCOLO FORZA RELATIVA SU BASE BARRE SINCRONIZZATE ---
+            etf_7 = calcola_ritorno_barre(close_s, 5)
+            etf_30 = calcola_ritorno_barre(close_s, 21)
+            etf_90 = calcola_ritorno_barre(close_s, 63)
             
             fr_spy_7, fr_spy_30, fr_spy_90 = etf_7 - spy_7, etf_30 - spy_30, etf_90 - spy_90
             fr_gld_7, fr_gld_30, fr_gld_90 = etf_7 - gld_7, etf_30 - gld_30, etf_90 - gld_90
             fr_uup_7, fr_uup_30, fr_uup_90 = etf_7 - uup_7, etf_30 - uup_30, etf_90 - uup_90
             
+            # MATRICE IPER-ALLINEATA ALLA FORMULA DEL TUO EXCEL DIVISO 10
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
             if fr_spy_30 > 0: qualita += 0.25
@@ -228,42 +238,28 @@ def elabora_radar(tickers, benchmarks):
 benchmarks = scarica_benchmarks_sicuri()
 df = elabora_radar(TICKERS_CONFIG, benchmarks)
 
-# ==============================================================================
-# 🧠 TRADUZIONE ESATTA AL 100% DELLA TUA FORMULA EXCEL NEI CALCOLI DI PYTHON
-# ==============================================================================
 def calcola_super_filtro(row):
-    c2 = row['Tipo']                 # C: PROFILO (CORE o SAT)
-    q2 = row['%B']                   # Q: %B (POSIZIONE)
-    u2 = row['Trend 200']            # U: TREND ANNUALE (🐂 BULL o 🐻 BEAR)
-    m2 = row['RSI Semplificato']     # M: RSI SEMPLIFICATO (Dalla tua formula Excel!)
-    g2 = row['Qualità ⭐']           # G: Punteggio qualità ⭐
+    c2 = row['Tipo']
+    q2 = row['%B']
+    u2 = row['Trend 200']
+    m2 = row['RSI Semplificato']
+    g2 = row['Qualità ⭐']
     
     if c2 == "CORE":
-        if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40:
-            return "🚀 VAI! (Pullback CORE)"
-        elif q2 < 0.55 and m2 > 40:
-            return "🤔 VALUTA (Osserva CORE)"
-        else:
-            return "❌ STAI FERMO"
-    else: # SATELLITI (SAT)
+        if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40: return "🚀 VAI! (Pullback CORE)"
+        elif q2 < 0.55 and m2 > 40: return "🤔 VALUTA (Osserva CORE)"
+        else: return "❌ STAI FERMO"
+    else:
         if g2 >= 0.75:
-            if q2 >= 0.55 and q2 <= 1.0 and u2 == "🐂 BULL" and m2 > 50:
-                return "🚀 VAI! (Trend SAT)"
-            elif q2 >= 0.45 and m2 > 45:
-                return "🤔 VALUTA (Osserva Trend)"
-            elif q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35:
-                return "🚀 VAI! (PULLBACK PREMIUM)"
-            elif q2 < 0.35 and m2 > 35:
-                return "🤔 VALUTA (Osserva Pullback Premium)"
-            else:
-                return "❌ STAI FERMO"
-        else: # SAT con Qualità < 75%
-            if q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35:
-                return "🚀 VAI! (Pullback SAT)"
-            elif q2 < 0.35 and m2 > 35:
-                return "🤔 VALUTA (Osserva Pullback)"
-            else:
-                return "❌ STAI FERMO"
+            if q2 >= 0.55 and q2 <= 1.0 and u2 == "🐂 BULL" and m2 > 50: return "🚀 VAI! (Trend SAT)"
+            elif q2 >= 0.45 and m2 > 45: return "🤔 VALUTA (Osserva Trend)"
+            elif q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35: return "🚀 VAI! (PULLBACK PREMIUM)"
+            elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback Premium)"
+            else: return "❌ STAI FERMO"
+        else:
+            if q2 < 0.25 and u2 == "🐂 BULL" and m2 > 35: return "🚀 VAI! (Pullback SAT)"
+            elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
+            else: return "❌ STAI FERMO"
 
 # --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
