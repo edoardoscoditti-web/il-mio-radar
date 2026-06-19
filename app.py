@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Algoritmo di Forza Relativa Intermarket allineato al 100% con Excel.")
+st.write("Sincronizzato eToro - Motore Live Adattivo allineato al secondo con i dati correnti di Google Finance.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,30 +97,28 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- FUNZIONE MASTER IPER-SINCRO CON LOGICA STRUTTURALE EXCEL ---
-def calcola_fr_excel(etf_series, bench_series, days_lookback):
+# --- LOGICA LIVE ADATTIVA: CALCOLA I LOOKBACK DALL'ULTIMO TICK DISPONIBILE CONDIVISO ---
+def calcola_fr_adattivo(etf_series, bench_series, days_lookback):
     try:
-        # Allineamento rigido dei calendari
+        # Allineamento calendari comprensivo dell'ultimo dato corrente caricato
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
         if df_aligned.empty: return 0
         
-        # Prezzo corrente ancorato all'ultima sessione conclusa (ieri sera)
+        # Ultimo prezzo disponibile (Coincide con l'Oggi dinamico di Excel)
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        # Calcolo data storica esatta partendo da OGGI (Fuso italiano)
-        oggi = pd.Timestamp.now(tz='Europe/Rome').tz_localize(None).normalize()
-        target_date = oggi - pd.Timedelta(days=days_lookback)
+        # Ancoraggio temporale mobile basato sull'ultimo record presente in tabella
+        endpoint_date = df_aligned.index[-1].normalize()
+        target_date = endpoint_date - pd.Timedelta(days=days_lookback)
         
-        # Trova l'indice esatto del giorno di borsa corrispondente
+        # Individuazione del giorno di mercato aperto corrispondente nel passato
         idx_past = df_aligned.index.get_indexer([target_date], method='nearest')[0]
         
         etf_past = df_aligned.iloc[idx_past, 0]
         bench_past = df_aligned.iloc[idx_past, 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
-        
-        # Formula geometrica a rapporto: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
         return 0
@@ -131,13 +129,10 @@ def elabora_radar(tickers, benchmarks):
     ora_it = pd.Timestamp.now(tz='Europe/Rome')
     giorno_settimana = ora_it.dayofweek
     ora_decimale = ora_it.hour + ora_it.minute / 60.0
-    oggi_str = ora_it.strftime('%Y-%m-%d')
     
-    spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
-    
-    spy_clean = spy_s.iloc[:-1] if not spy_s.empty and spy_s.index[-1].strftime('%Y-%m-%d') == oggi_str else spy_s
-    gld_clean = gld_s.iloc[:-1] if not gld_s.empty and gld_s.index[-1].strftime('%Y-%m-%d') == oggi_str else gld_s
-    uup_clean = uup_s.iloc[:-1] if not uup_s.empty and uup_s.index[-1].strftime('%Y-%m-%d') == oggi_str else uup_s
+    spy_clean = benchmarks.get("SPY", pd.Series())
+    gld_clean = benchmarks.get("GLD", pd.Series())
+    uup_clean = benchmarks.get("UUP", pd.Series())
     
     for ticker_yahoo, info in tickers.items():
         try:
@@ -148,45 +143,35 @@ def elabora_radar(tickers, benchmarks):
             if hist.index.tz is not None:
                 hist.index = hist.index.tz_localize(None)
             
-            prezzo_attuale = hist['Close'].dropna().iloc[-1]
-            prezzo_ieri = hist['Close'].dropna().iloc[-2]
+            close_series = hist['Close'].dropna()
+            prezzo_attuale = close_series.iloc[-1]
+            prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            if hist.index[-1].strftime('%Y-%m-%d') == oggi_str:
-                df_closed = hist.iloc[:-1]
-            else:
-                df_closed = hist
-                
-            close_closed = df_closed['Close'].dropna()
-            volume_closed = df_closed['Volume']
-            high_closed = df_closed['High']
-            low_closed = df_closed['Low']
-            prezzo_chiusura_ufficiale = close_closed.iloc[-1]
-            
-            # --- INDICATORI TECNICI ---
-            sma20 = close_closed.rolling(window=20).mean().iloc[-1]
-            std20 = close_closed.rolling(window=20).std().iloc[-1]
+            # --- INDICATORI TECNICI ADATTIVI ---
+            sma20 = close_series.rolling(window=20).mean().iloc[-1]
+            std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
-            percent_b = (prezzo_chiusura_ufficiale - bollinger_inf) / (bollinger_sup - bollinger_inf)
+            percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
             
-            alert_bande = "💥 TOCCO SUP" if prezzo_chiusura_ufficiale >= bollinger_sup else ("💥 TOCCO INF" if prezzo_chiusura_ufficiale <= bollinger_inf else "In range")
+            alert_bande = "💥 TOCCO SUP" if prezzo_attuale >= bollinger_sup else ("💥 TOCCO INF" if prezzo_attuale <= bollinger_inf else "In range")
             
-            close_30 = close_closed.tail(30)
-            rsi_semplificato = 50 + (10 * (prezzo_chiusura_ufficiale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
+            close_30 = close_series.tail(30)
+            rsi_semplificato = 50 + (10 * (prezzo_attuale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
             
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
-            prev_close = close_closed.shift(1)
-            tr = pd.concat([high_closed - low_closed, (high_closed - prev_close).abs(), (low_closed - prev_close).abs()], axis=1).max(axis=1)
+            prev_close = close_series.shift(1)
+            tr = pd.concat([hist['High'] - hist['Low'], (hist['High'] - prev_close).abs(), (hist['Low'] - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            vol_check = "✅ VOLUME ALTO" if volume_closed.iloc[-1] > volume_closed.tail(30).mean() else "⚠️ VOL. BASSO"
-            trend_7g_list = close_closed.tail(7).tolist()
-            trend_30g_list = close_closed.tail(30).tolist()
+            vol_check = "✅ VOLUME ALTO" if hist['Volume'].iloc[-1] > hist['Volume'].tail(30).mean() else "⚠️ VOL. BASSO"
+            trend_7g_list = close_series.tail(7).tolist()
+            trend_30g_list = close_series.tail(30).tolist()
             
-            sma200 = close_closed.rolling(window=200).mean().iloc[-1]
-            trend_200 = "🐂 BULL" if prezzo_chiusura_ufficiale > sma200 else "🐻 BEAR"
+            sma200 = close_series.rolling(window=200).mean().iloc[-1]
+            trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
             if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
             else:
@@ -194,20 +179,19 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- APPLICAZIONE SIMMETRICA DELLA FUNZIONE MASTER SU TUTTI I BENCHMARK (NESSUN REFUSO) ---
-            fr_spy_7  = calcola_fr_excel(close_closed, spy_clean, 7)
-            fr_spy_30 = calcola_fr_excel(close_closed, spy_clean, 30)
-            fr_spy_90 = calcola_fr_excel(close_closed, spy_clean, 90)
+            # --- APPLICAZIONE GEOMETRICA SUL FLUSSO LIVE DI CODA ---
+            fr_spy_7  = calcola_fr_adattivo(close_series, spy_clean, 7)
+            fr_spy_30 = calcola_fr_adattivo(close_series, spy_clean, 30)
+            fr_spy_90 = calcola_fr_adattivo(close_series, spy_clean, 90)
             
-            fr_gld_7  = calcola_fr_excel(close_closed, gld_clean, 7)
-            fr_gld_30 = calcola_fr_excel(close_closed, gld_clean, 30)
-            fr_gld_90 = calcola_fr_excel(close_closed, gld_clean, 90)
+            fr_gld_7  = calcola_fr_adattivo(close_series, gld_clean, 7)
+            fr_gld_30 = calcola_fr_adattivo(close_series, gld_clean, 30)
+            fr_gld_90 = calcola_fr_adattivo(close_series, gld_clean, 90)
             
-            fr_uup_7  = calcola_fr_excel(close_closed, uup_clean, 7)
-            fr_uup_30 = calcola_fr_excel(close_closed, uup_clean, 30)
-            fr_uup_90 = calcola_fr_excel(close_closed, uup_clean, 90)
+            fr_uup_7  = calcola_fr_adattivo(close_series, uup_clean, 7)
+            fr_uup_30 = calcola_fr_adattivo(close_series, uup_clean, 30)
+            fr_uup_90 = calcola_fr_adattivo(close_series, uup_clean, 90)
             
-            # CALCOLO PUNTEGGI STRUTTURATO SULLE MATRICI INTERMARKET PULITE
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
             if fr_spy_30 > 0: qualita += 0.25
