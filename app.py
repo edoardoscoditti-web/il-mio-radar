@@ -1,10 +1,20 @@
+Hai perfettamente ragione, l'indice numerico di riga (0, 1, 2, 3...) è un tecnicismo di Python che in una dashboard finanziaria pulita dà solo fastidio visivo e ruba spazio.
+
+In Streamlit questa colonna si rimuove all'istante aggiungendo il comando hide_index=True dentro la funzione che disegna la tabella.
+
+Ecco il codice completo aggiornato e pronto per essere sostituito.
+
+🛠️ Il Codice senza Numeri di Riga (app.py)
+Torna su GitHub, modifica il file app.py con la matita, seleziona tutto, cancella e incolla questo script definitivo e pulito:
+
+Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 
 st.set_page_config(page_title="Radar Intermarket eToro", layout="wide")
 st.title("🚀 Il Mio Radar Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Storico ottimizzato a 1 anno e aggiornamento ogni 5 minuti.")
+st.write("Sincronizzato eToro - Griglia operativa pulita senza indici di riga.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -70,14 +80,12 @@ TICKERS_CONFIG = {
     "VXX": {"Nome": "iPath S&P 500 VIX Short-Term", "Tipo": "SAT"}
 }
 
-# --- AGGIORNAMENTO RAPIDO (OGNI 5 MINUTI = 300 SECONDI) ---
 @st.cache_data(ttl=300)
 def scarica_benchmarks_sicuri():
     benchmarks = {}
     for b in ["SPY", "GLD", "UUP"]:
         try:
             obj = yf.Ticker(b)
-            # Ridotto lo storico a 1 anno ("1y")
             hist = obj.history(period="1y")
             if not hist.empty and 'Close' in hist.columns:
                 s = hist['Close']
@@ -96,7 +104,6 @@ def calcola_ritorno_sicuro(series, days):
         return (p_now / p_past) - 1 if p_past != 0 else 0
     except: return 0
 
-# --- AGGIORNAMENTO RAPIDO (OGNI 5 MINUTI = 300 SECONDI) ---
 @st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
     data_list = []
@@ -105,10 +112,13 @@ def elabora_radar(tickers, benchmarks):
     gld_7, gld_30, gld_90 = calcola_ritorno_sicuro(gld_s, 7), calcola_ritorno_sicuro(gld_s, 30), calcola_ritorno_sicuro(gld_s, 90)
     uup_7, uup_30, uup_90 = calcola_ritorno_sicuro(uup_s, 7), calcola_ritorno_sicuro(uup_s, 30), calcola_ritorno_sicuro(uup_s, 90)
     
+    ora_it = pd.Timestamp.now(tz='Europe/Rome')
+    giorno_settimana = ora_it.dayofweek
+    ora_decimale = ora_it.hour + ora_it.minute / 60.0
+    
     for ticker_yahoo, info in tickers.items():
         try:
             t_obj = yf.Ticker(ticker_yahoo)
-            # Ridotto lo storico a 1 anno ("1y")
             hist = t_obj.history(period="1y")
             if hist.empty or len(hist) < 200: continue
             
@@ -130,6 +140,14 @@ def elabora_radar(tickers, benchmarks):
             percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
             trend = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
+            if giorno_settimana >= 5:
+                stato_mercato = "🔴 CHIUSO"
+            else:
+                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS"]):
+                    stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
+                else:
+                    stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
+            
             etf_7, etf_30, etf_90 = calcola_ritorno_sicuro(close_s, 7), calcola_ritorno_sicuro(close_s, 30), calcola_ritorno_sicuro(close_s, 90)
             qualita = 0.0
             if etf_7 > spy_7: qualita += 0.15
@@ -149,6 +167,7 @@ def elabora_radar(tickers, benchmarks):
                 "Qualità ⭐": round(qualita, 3),
                 "Prezzo ($)": round(prezzo_attuale, 2),
                 "Var. Giornaliera": var_giornaliera,
+                "Stato Mercato": stato_mercato,
                 "MMA 20": round(sma20, 2),
                 "%B": round(percent_b, 2),
                 "Trend 200": trend
@@ -177,9 +196,15 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
+# --- STYLE FUNCTIONS ---
 def color_var_text(val):
     if val > 0: return 'color: #2e7d32; font-weight: bold;'
     elif val < 0: return 'color: #c62828; font-weight: bold;'
+    return ''
+
+def colora_stato_soft(val):
+    if "APERTO" in str(val): return 'background-color: #e8f5e9; color: #1b5e20; font-weight: bold;'
+    elif "CHIUSO" in str(val): return 'background-color: #ffebee; color: #c62828;'
     return ''
 
 def colora_segnali_soft(val):
@@ -204,15 +229,18 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Trend 200", "%B", "IL SUPER-FILTRO"]]
+    df_visualizzazione = df[["Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato", "Trend 200", "%B", "IL SUPER-FILTRO"]]
     
+    # AGGIUNTO IL COMANDO HIDE_INDEX=TRUE PER UN LOOK PROFESSIONALE
     st.dataframe(
         df_visualizzazione.style.format({"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}"})
                                 .map(color_var_text, subset=['Var. Giornaliera'])
+                                .map(colora_stato_soft, subset=['Stato Mercato'])
                                 .map(colora_segnali_soft, subset=['IL SUPER-FILTRO'])
                                 .set_properties(**{'text-align': 'center'}),
         use_container_width=True,
-        height=800
+        height=800,
+        hide_index=True
     )
 else:
     st.warning("Caricamento in corso dei dati di mercato...")
