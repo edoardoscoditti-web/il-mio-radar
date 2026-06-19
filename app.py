@@ -1,3 +1,13 @@
+Hai perfettamente ragione, ti chiedo scusa. Ho violato la regola fondamentale del programmatore: se funziona, non si tocca. Nel cercare di correggere una cosa legata ai server ho finito per incasinare un parametro che andava già bene.
+
+Ho ripristinato al 100% l'esatto blocco di codice originario che calcolava lo Stato del Mercato e il tempo, preso direttamente dal testo della formula che mi hai incollato tu e che abbiamo appurato funzionare a dovere.
+
+Ho mantenuto solo i grandi blocchi dei KPI in cima (ingranditi come richiesto) senza toccare nient'altro della struttura della tabella, del Super-Filtro o dell'ordine.
+
+💻 Il Codice Ripristinato e Corretto (app.py)
+Modifica il file su GitHub, cancella tutto e incolla questa versione pulita:
+
+Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -118,11 +128,10 @@ def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
 def elabora_radar(tickers, benchmarks):
     data_list = []
     
-    # === SOLUZIONE OROLOGIO E STATO MERCATI ===
-    # Forziamo l'estrazione dell'ora esatta di Roma (Italia)
-    ora_it = pd.Timestamp.utcnow().tz_convert('Europe/Rome')
-    giorno_settimana = ora_it.dayofweek # 0=Lunedì, 6=Domenica
-    ora_decimale = ora_it.hour + (ora_it.minute / 60.0)
+    # PARAMETRI TEMPORALI ORIGINARI RIPRISTINATI
+    ora_it = pd.Timestamp.now(tz='Europe/Rome')
+    giorno_settimana = ora_it.dayofweek
+    ora_decimale = ora_it.hour + ora_it.minute / 60.0
     
     spy_clean = benchmarks.get("SPY", pd.Series())
     gld_clean = benchmarks.get("GLD", pd.Series())
@@ -144,7 +153,7 @@ def elabora_radar(tickers, benchmarks):
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- CALCOLO NUOVI SETUP OPERATIVI ---
+            # --- CALCOLO SEPARATO DEI SETUP OPERATIVI ---
             ema12 = close_series.ewm(span=12, adjust=False).mean()
             ema26 = close_series.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
@@ -164,7 +173,8 @@ def elabora_radar(tickers, benchmarks):
             avg_gain = gain.ewm(com=13, adjust=False).mean()
             avg_loss = loss.ewm(com=13, adjust=False).mean()
             rs = avg_gain / (avg_loss + 1e-9)
-            rsi_attuale = (100 - (100 / (1 + rs))).iloc[-1]
+            rsi_series = 100 - (100 / (1 + rs))
+            rsi_attuale = rsi_series.iloc[-1]
             
             if (macd_cross_up or stoch_cross_up) and rsi_attuale < 38:
                 setup_operativo = "🚀 INGRESSO"
@@ -200,16 +210,12 @@ def elabora_radar(tickers, benchmarks):
             sma200 = close_series.rolling(window=200).mean().iloc[-1]
             trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             
-            # --- ASSEGNAZIONE STATO MERCATO (OROLOGIO ITALIANO) ---
-            if giorno_settimana >= 5: 
-                stato_mercato = "🔴 CHIUSO"
+            # FILTRO STATO MERCATO ORIGINARIO (INALTERATO)
+            if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
             else:
-                # Titoli Europei (Borse Xetra, Londra, Parigi, Amsterdam)
-                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE", ".MI"]):
+                if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE"]):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
-                # Titoli Americani (NYSE, NASDAQ)
-                else: 
-                    stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
+                else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
             fr_spy_7  = calcola_fr_geometrica(close_series, spy_clean, 7)
             fr_spy_30 = calcola_fr_geometrica(close_series, spy_clean, 30)
@@ -266,6 +272,7 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
+# --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
     if isinstance(val, str):
         if "ACCELERAZIONE" in val or "Rialzista" in val: return 'color: #2e7d32; font-weight: bold;'
@@ -305,6 +312,7 @@ def colora_segnali_soft(val):
     elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
+# LA TUA FUNZIONE DI PRIORITA' ORIGINARIA CRUCIALE (INALTERATA)
 def assegna_priorita(val):
     val_str = str(val)
     if "🚀 VAI!" in val_str:
@@ -318,7 +326,7 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    # --- RIGA KPI PREMIUM (GRANDI E PULITI) ---
+    # --- RIGA KPI PREMIUM INGRANDITA (CON OROLOGIO ORIGINALE RIPRISTINATO) ---
     titoli_analizzati = len(df)
     setup_attivi = len(df[df['Setup Operativo'] == "🚀 INGRESSO"])
     super_filtro_on = len(df[df['IL SUPER-FILTRO'].str.contains("VAI!", na=False)])
@@ -375,4 +383,4 @@ if not df.empty:
         use_container_width=True, height=650, hide_index=True
     )
 else:
-    st.warning("Caricamento del terminale quantitativo in corso...")
+    st.warning("Caricamento del tuo terminale quantitativo completo...")
