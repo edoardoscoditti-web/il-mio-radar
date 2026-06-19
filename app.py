@@ -1,13 +1,3 @@
-Hai perfettamente ragione, l'indice numerico di riga (0, 1, 2, 3...) è un tecnicismo di Python che in una dashboard finanziaria pulita dà solo fastidio visivo e ruba spazio.
-
-In Streamlit questa colonna si rimuove all'istante aggiungendo il comando hide_index=True dentro la funzione che disegna la tabella.
-
-Ecco il codice completo aggiornato e pronto per essere sostituito.
-
-🛠️ Il Codice senza Numeri di Riga (app.py)
-Torna su GitHub, modifica il file app.py con la matita, seleziona tutto, cancella e incolla questo script definitivo e pulito:
-
-Python
 import streamlit as st
 import pandas as pd
 import yfinance as yf
