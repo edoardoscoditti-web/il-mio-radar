@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo eToro", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Formula Volume Check allineata al 100% con il tuo Excel.")
+st.write("Sincronizzato eToro - Corretto bug fuso orario su ATR e Volumi.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -112,13 +112,14 @@ def elabora_radar(tickers, benchmarks):
             hist = t_obj.history(period="1y")
             if hist.empty or len(hist) < 200: continue
             
-            close_s = hist['Close']
+            # BLINDATURA: Rimuoviamo il fuso orario dall'intero DataFrame subito
+            if hist.index.tz is not None:
+                hist.index = hist.index.tz_localize(None)
+            
+            close_s = hist['Close'].dropna()
             volume_s = hist['Volume']
             high_s = hist['High']
             low_s = hist['Low']
-            
-            if close_s.index.tz is not None: close_s = close_s.tz_localize(None)
-            close_s = close_s.dropna()
             
             prezzo_attuale = close_s.iloc[-1]
             prezzo_ieri = close_s.iloc[-2]
@@ -142,9 +143,9 @@ def elabora_radar(tickers, benchmarks):
             tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            # --- VOLUME CHECK (IDENTICO ALLA TUA FORMULA EXCEL SE VOLUME > VOLUMEAVG) ---
+            # --- VOLUME CHECK (SE VOLUME > VOLUMEAVG) ---
             vol_attuale = volume_s.iloc[-1]
-            vol_avg30 = volume_s.tail(30).mean() # volumeavg di Google Finance è la media a 30 giorni
+            vol_avg30 = volume_s.tail(30).mean()
             if vol_attuale > vol_avg30:
                 vol_check = "✅ VOLUME ALTO"
             else:
