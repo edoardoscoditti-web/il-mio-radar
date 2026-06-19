@@ -4,46 +4,13 @@ import yfinance as yf
 import numpy as np
 
 # Configurazione Pagina
-st.set_page_config(page_title="Quant Terminal Pro", layout="wide", initial_sidebar_state="collapsed")
-
-# --- STILE CSS PERSONALIZZATO (HEADER PREMIUM) ---
-st.markdown("""
-    <style>
-    .main-header {
-        font-size: 2.8rem !important;
-        font-weight: 800;
-        color: #1A365D;
-        text-align: center;
-        margin-bottom: 0px;
-        padding-bottom: 0px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        letter-spacing: 1px;
-    }
-    .sub-header {
-        font-size: 1.1rem !important;
-        color: #4A5568;
-        text-align: center;
-        margin-top: -5px;
-        margin-bottom: 25px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-    }
-    .highlight {
-        color: #2E7D32;
-    }
-    </style>
-    <div class="main-header">
-        ⚡ QUANT <span class="highlight">TERMINAL</span> PRO
-    </div>
-    <div class="sub-header">
-        Intermarket Geometric Engine & eToro Setup Scanner
-    </div>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Quant Terminal", layout="wide", initial_sidebar_state="collapsed")
 
 # ==============================================================================
-# 🗂️ DATABASE TITOLI COMPLETO
+# 🗂️ DATABASE TITOLI COMPLETO (Sincronizzato eToro + Nuovi ETF Xetra)
 # ==============================================================================
 TICKERS_CONFIG = {
+    # --- CORE ORIGINARI ---
     "SWDA.L": {"Nome": "iShares Core MSCI World", "Tipo": "CORE"},
     "ISAC.L": {"Nome": "iShares MSCI ACWI", "Tipo": "CORE"},
     "CSPX.L": {"Nome": "iShares Core S&P 500", "Tipo": "CORE"},
@@ -56,12 +23,16 @@ TICKERS_CONFIG = {
     "VGK": {"Nome": "Vanguard FTSE Europe", "Tipo": "CORE"},
     "IJPA.L": {"Nome": "iShares MSCI Japan", "Tipo": "CORE"},
     "EWJ": {"Nome": "iShares MSCI Japan ETF (USA)", "Tipo": "CORE"},
+    
+    # --- NUOVI TITOLI TEDESCHI BORSA XETRA (.DE) ---
     "ESPO.DE": {"Nome": "VanEck Video Gaming & Esports UCITS", "Tipo": "SAT"},
     "IUSN.DE": {"Nome": "iShares MSCI World Small Cap UCITS", "Tipo": "CORE"},
     "IS3N.DE": {"Nome": "iShares Core MSCI EM IMI UCITS", "Tipo": "CORE"},
     "IS3Q.DE": {"Nome": "iShares MSCI World Quality Factor", "Tipo": "SAT"},
     "IS3S.DE": {"Nome": "iShares MSCI World Value Factor", "Tipo": "SAT"},
     "HDX1.DE": {"Nome": "L&G DAX Daily 2x Long UCITS (Leva)", "Tipo": "SAT"},
+
+    # --- SATELLITI ORIGINARI ---
     "WDEF.L": {"Nome": "WisdomTree Europe Defence", "Tipo": "SAT"},
     "VUG": {"Nome": "Vanguard Growth (USA)", "Tipo": "SAT"},
     "VAPU.L": {"Nome": "Vanguard FTSE Asia Pacific", "Tipo": "SAT"},
@@ -126,7 +97,7 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- MOTORE GEOMETRICO ---
+# --- MOTORE GEOMETRICO ORIGINARIO ---
 def calcola_fr_geometrica(etf_series, bench_series, days_lookback):
     try:
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
@@ -170,7 +141,7 @@ def elabora_radar(tickers, benchmarks):
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- INDICATORI e SETUP ---
+            # --- CALCOLO NUOVI SETUP OPERATIVI ---
             ema12 = close_series.ewm(span=12, adjust=False).mean()
             ema26 = close_series.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
@@ -206,6 +177,7 @@ def elabora_radar(tickers, benchmarks):
             else:
                 trend_anticipato = "Rialzista" if ema9.iloc[-1] > ema21.iloc[-1] else "Ribassista"
 
+            # --- VECCHI INDICATORI TECNICI ORIGINARI ---
             sma20 = close_series.rolling(window=20).mean().iloc[-1]
             std20 = close_series.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
@@ -286,6 +258,7 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
+# --- STYLE FUNCTIONS ---
 def color_text_red_green(val):
     if isinstance(val, str):
         if "ACCELERAZIONE" in val or "Rialzista" in val: return 'color: #2e7d32; font-weight: bold;'
@@ -325,6 +298,7 @@ def colora_segnali_soft(val):
     elif "❌ STAI FERMO" in val_str: return 'background-color: #ffcdd2; color: #b71c1c;'
     return ''
 
+# LA TUA FUNZIONE DI PRIORITA' ORIGINARIA CRUCIALE
 def assegna_priorita(val):
     val_str = str(val)
     if "🚀 VAI!" in val_str:
@@ -338,19 +312,32 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
-    # --- DASHBOARD KIPs (NUMERI RIASSUNTIVI) ---
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
+    # --- RIGA KPI PREMIUM AD ALTO IMPATTO (VISTA INGRANDITA) ---
     titoli_analizzati = len(df)
     setup_attivi = len(df[df['Setup Operativo'] == "🚀 INGRESSO"])
     super_filtro_on = len(df[df['IL SUPER-FILTRO'].str.contains("VAI!", na=False)])
     mercati_aperti = len(df[df['Stato Mercato'].str.contains("APERTO", na=False)])
     
-    c1.metric("📊 Titoli Scansionati", titoli_analizzati)
-    c2.metric("🎯 Segnali Super-Filtro", super_filtro_on)
-    c3.metric("🚀 Setup Ingresso (eToro)", setup_attivi)
-    c4.metric("🟢 Mercati Aperti", mercati_aperti)
-    st.markdown("<hr style='margin-bottom: 25px;'>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style="display: flex; justify-content: space-around; background-color: #f8f9fa; padding: 22px; border-radius: 12px; margin-top: 15px; margin-bottom: 25px; border: 1px solid #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif;">
+            <div style="text-align: center;">
+                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">📊 TITOLI SCANSIONATI</p>
+                <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #1A365D; line-height: 1;">{titoli_analizzati}</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">🎯 SEGNALI ATTIVI</p>
+                <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #2E7D32; line-height: 1;">{super_filtro_on}</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">🚀 SETUP SETUP INGRESSO</p>
+                <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #E65100; line-height: 1;">{setup_attivi}</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="margin: 0; font-size: 1.15rem; color: #4A5568; font-weight: 600; letter-spacing: 0.5px;">🟢 MERCATI APERTI</p>
+                <p style="margin: 5px 0 0 0; font-size: 2.8rem; font-weight: 800; color: #2E7D32; line-height: 1;">{mercati_aperti}</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     colonne_finali = [
         "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Setup Operativo", "Trend Anticipato ⚡", "Qualità ⭐", "Prezzo", "Var. Giornaliera", "Stato Mercato",
