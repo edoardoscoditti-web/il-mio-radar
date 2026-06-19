@@ -138,8 +138,7 @@ def elabora_radar(tickers, benchmarks):
             prezzo_ieri = close_series.iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- CALCOLO INDICATORI GRAFICI AUTOMATIZZATI ---
-            # 1. MACD (12, 26, 9)
+            # --- CALCOLO INDICATORI OPERATIVI ---
             ema12 = close_series.ewm(span=12, adjust=False).mean()
             ema26 = close_series.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
@@ -148,7 +147,6 @@ def elabora_radar(tickers, benchmarks):
             macd_cross_up = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-2] <= signal_line.iloc[-2]
             macd_stato = "🟢 UP CROSS" if macd_cross_up else ("🐂 RIALZISTA" if macd_line.iloc[-1] > signal_line.iloc[-1] else "🐻 RIBASSISTA")
             
-            # 2. STOCASTICO (14, 3, 3)
             low14 = low_series.rolling(window=14).min()
             high14 = high_series.rolling(window=14).max()
             stoch_k = 100 * (close_series - low14) / (high14 - low14 + 1e-9)
@@ -158,7 +156,6 @@ def elabora_radar(tickers, benchmarks):
             stoch_cross_up = stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and stoch_k_smoothed.iloc[-2] <= stoch_d.iloc[-2]
             stoch_stato = "🟢 UP CROSS" if stoch_cross_up else ("🐂 RIALZISTA" if stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] else "🐻 RIBASSISTA")
             
-            # 3. RSI (14)
             delta = close_series.diff()
             gain = delta.where(delta > 0, 0)
             loss = -delta.where(delta < 0, 0)
@@ -168,7 +165,6 @@ def elabora_radar(tickers, benchmarks):
             rsi_series = 100 - (100 / (1 + rs))
             rsi_attuale = rsi_series.iloc[-1]
             
-            # 4. ENGINE SETUP OPERATIVO (EX SEGNALE ETORO)
             if (macd_cross_up or stoch_cross_up) and rsi_attuale < 38:
                 setup_operativo = "🚀 INGRESSO"
             elif macd_line.iloc[-1] > signal_line.iloc[-1] and stoch_k_smoothed.iloc[-1] > stoch_d.iloc[-1] and rsi_attuale < 50:
@@ -176,7 +172,6 @@ def elabora_radar(tickers, benchmarks):
             else:
                 setup_operativo = "⏳ MONITORAGGIO"
                 
-            # 5. TREND ANTICIPATO (EMA 9 / EMA 21 CROSS)
             ema9 = close_series.ewm(span=9, adjust=False).mean()
             ema21 = close_series.ewm(span=21, adjust=False).mean()
             ema_cross_up = ema9.iloc[-1] > ema21.iloc[-1] and ema9.iloc[-2] <= ema21.iloc[-2]
@@ -208,7 +203,6 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- FORZA RELATIVA GEOMETRICA ---
             fr_spy_7 = calcola_fr_geometrica(close_series, spy_clean, 7)
             fr_spy_30 = calcola_fr_geometrica(close_series, spy_clean, 30)
             fr_spy_90 = calcola_fr_geometrica(close_series, spy_clean, 90)
@@ -265,10 +259,18 @@ def calcola_super_filtro(row):
             elif q2 < 0.35 and m2 > 35: return "🤔 VALUTA (Osserva Pullback)"
             else: return "❌ STAI FERMO"
 
-# --- STYLE FUNCTIONS ---
+# --- STYLE FUNCTIONS CORRETTE PER TESTO E NUMERI ---
 def color_text_red_green(val):
-    if val > 0 or "UP CROSS" in str(val) or "ACCELERAZIONE" in str(val): return 'color: #2e7d32; font-weight: bold;'
-    elif val < 0 or "DEBOLE" in str(val): return 'color: #c62828; font-weight: bold;'
+    if isinstance(val, str):
+        if "UP CROSS" in val or "ACCELERAZIONE" in val or "RIALZISTA" in val: 
+            return 'color: #2e7d32; font-weight: bold;'
+        elif "RIBASSISTA" in val or "DEBOLE" in val: 
+            return 'color: #c62828; font-weight: bold;'
+        return ''
+    try:
+        if val > 0: return 'color: #2e7d32; font-weight: bold;'
+        elif val < 0: return 'color: #c62828; font-weight: bold;'
+    except: pass
     return ''
 
 def colora_setup_operativo(val):
