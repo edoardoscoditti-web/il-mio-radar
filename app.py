@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Date di lookback calcolate da OGGI() per un allineamento al millesimo con Excel.")
+st.write("Sincronizzato eToro - Prezzi storici puri (Unadjusted Close) identici al 100% a Google Finance.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -83,13 +83,14 @@ TICKERS_CONFIG = {
     "VXX": {"Nome": "iPath S&P 500 VIX Short-Term", "Tipo": "SAT"}
 }
 
+# --- FORZATO AUTO_ADJUST=FALSE PER EVITARE DISTORSIONI DA DIVIDENDI ---
 @st.cache_data(ttl=300)
 def scarica_benchmarks_sicuri():
     benchmarks = {}
     for b in ["SPY", "GLD", "UUP"]:
         try:
             obj = yf.Ticker(b)
-            hist = obj.history(period="1y")
+            hist = obj.history(period="1y", auto_adjust=False)
             if not hist.empty and 'Close' in hist.columns:
                 s = hist['Close']
                 if s.index.tz is not None: s = s.tz_localize(None)
@@ -97,29 +98,23 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- FORMULA CALCOLO SU BASE DATA CALENDARIO DA OGGI() EXCEL-STYLE ---
 def calcola_fr_rapporto_calendario(etf_series, bench_series, days):
     try:
-        # Allineamento calendari borse
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
         if df_aligned.empty: return 0
         
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        # Calcolo data storica esatta partendo da OGGI (Fuso italiano)
         oggi = pd.Timestamp.now(tz='Europe/Rome').tz_localize(None).normalize()
         target_date = oggi - pd.Timedelta(days=days)
         
-        # Trova il giorno di borsa aperta più vicino alla data target
         idx = df_aligned.index.get_indexer([target_date], method='nearest')[0]
         
         etf_past = df_aligned.iloc[idx, 0]
         bench_past = df_aligned.iloc[idx, 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
-        
-        # Logica geometrica a rapporto: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
         return 0
@@ -141,7 +136,8 @@ def elabora_radar(tickers, benchmarks):
     for ticker_yahoo, info in tickers.items():
         try:
             t_obj = yf.Ticker(ticker_yahoo)
-            hist = t_obj.history(period="1y")
+            # FORZATO AUTO_ADJUST=FALSE PER EVITARE DISTORSIONI DA DIVIDENDI
+            hist = t_obj.history(period="1y", auto_adjust=False)
             if hist.empty or len(hist) < 200: continue
             
             if hist.index.tz is not None:
@@ -193,7 +189,6 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- CHIAMATE ALLINEATE A CALENDARIO EXCEL (7g, 30g, 90g CALENDAR DAYS) ---
             fr_spy_7  = calcola_fr_rapporto_calendario(close_closed, spy_clean, 7)
             fr_spy_30 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 30)
             fr_spy_90 = calcola_fr_rapporto_calendario(close_closed, spy_clean, 90)
