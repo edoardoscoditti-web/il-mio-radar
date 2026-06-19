@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Algoritmo di Forza Relativa a sessioni lavorative reali allineate ad Excel.")
+st.write("Sincronizzato eToro - Allineamento millimetrico delle sessioni storiche con il file Excel.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,18 +97,18 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- MOTORE DI CALCOLO STRUTTURATO A RIGHE DI TRADING CONDIVISE (EQUIVALENTE A GIORNO.LAVORATIVO) ---
+# --- CORREZIONE INDICE: iloc[-bars] APPLICA IL DELTA ESATTO DI LOOKBACK ---
 def calcola_fr_rapporto_barre(etf_series, bench_series, bars):
     try:
-        # Inner Join: allinea i calendari escludendo i giorni festivi non comuni
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
-        if len(df_aligned) <= bars: return 0
+        if len(df_aligned) < bars: return 0
         
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        etf_past = df_aligned.iloc[-(bars + 1), 0]
-        bench_past = df_aligned.iloc[-(bars + 1), 1]
+        # Sincronizzazione perfetta delle righe storiche lavorative
+        etf_past = df_aligned.iloc[-bars, 0]
+        bench_past = df_aligned.iloc[-bars, 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
@@ -125,7 +125,6 @@ def elabora_radar(tickers, benchmarks):
     
     spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
     
-    # Pulizia candela live odierna parziale
     spy_clean = spy_s.iloc[:-1] if not spy_s.empty and spy_s.index[-1].strftime('%Y-%m-%d') == oggi_str else spy_s
     gld_clean = gld_s.iloc[:-1] if not gld_s.empty and gld_s.index[-1].strftime('%Y-%m-%d') == oggi_str else gld_s
     uup_clean = uup_s.iloc[:-1] if not uup_s.empty and uup_s.index[-1].strftime('%Y-%m-%d') == oggi_str else uup_s
@@ -185,7 +184,7 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- APPLICAZIONE RIGIDA DELLE CORRISPONDENZE DELLE RIGHE (5, 20, 60 SESSIONI REALI) ---
+            # --- CORRISPONDENZE FISSE RIGHE: 5(7g), 20(30g), 60(90g) ---
             fr_spy_7  = calcola_fr_rapporto_barre(close_closed, spy_clean, 5)
             fr_spy_30 = calcola_fr_rapporto_barre(close_closed, spy_clean, 20)
             fr_spy_90 = calcola_fr_rapporto_barre(close_closed, spy_clean, 60)
@@ -195,6 +194,7 @@ def elabora_radar(tickers, benchmarks):
             fr_gld_90 = calcola_fr_rapporto_barre(close_closed, gld_clean, 60)
             
             fr_uup_7  = calcola_fr_rapporto_barre(close_closed, uup_clean, 5)
+            fr_uup_30 = calcola_fr_rapporto_business_days(close_closed, uup_clean, 20) if 'calcola_fr_rapporto_business_days' in globals() else calcola_fr_rapporto_barre(close_closed, uup_clean, 20)
             fr_uup_30 = calcola_fr_rapporto_barre(close_closed, uup_clean, 20)
             fr_uup_90 = calcola_fr_rapporto_barre(close_closed, uup_clean, 60)
             
