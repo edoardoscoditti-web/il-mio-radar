@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo eToro", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Intermarket")
-st.write("Sincronizzato eToro - Corretto bug fuso orario su ATR e Volumi.")
+st.write("Sincronizzato eToro - Layout con trend a 7G e 30G in formato mini compatto.")
 
 # --- CONFIGURAZIONE TICKER ---
 TICKERS_CONFIG = {
@@ -112,7 +112,6 @@ def elabora_radar(tickers, benchmarks):
             hist = t_obj.history(period="1y")
             if hist.empty or len(hist) < 200: continue
             
-            # BLINDATURA: Rimuoviamo il fuso orario dall'intero DataFrame subito
             if hist.index.tz is not None:
                 hist.index = hist.index.tz_localize(None)
             
@@ -151,7 +150,8 @@ def elabora_radar(tickers, benchmarks):
             else:
                 vol_check = "⚠️ VOL. BASSO"
             
-            # --- TREND 30 GIORNI (LISTA PER GRAFICO) ---
+            # --- HISTORICAL LISTS PER MINI GRAFICI ---
+            trend_7g_list = close_s.tail(7).tolist()
             trend_30g_list = close_s.tail(30).tolist()
             
             # --- STATO MERCATO ---
@@ -192,6 +192,7 @@ def elabora_radar(tickers, benchmarks):
                 "Var. Giornaliera": var_giornaliera,
                 "Stato Mercato": stato_mercato,
                 "ALERT BANDE": alert_bande,
+                "Trend 7G": trend_7g_list,
                 "Trend 30G": trend_30g_list,
                 "VOLUME CHECK": vol_check,
                 "Bandwidth": bandwidth,
@@ -267,13 +268,14 @@ if not df.empty:
     df['_rank'] = df['IL SUPER-FILTRO'].apply(assegna_priorita)
     df = df.sort_values(by=["_rank", "Qualità ⭐"], ascending=[True, False]).drop(columns=['_rank'])
     
+    # Lista colonne aggiornata con Trend 7G inserito prima di Trend 30G
     colonne_finali = [
-        "Ticker", "Nome", "Tipo", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato",
-        "ALERT BANDE", "Trend 30G", "VOLUME CHECK", "Bandwidth", "ATR",
+        "Ticker", "Nome", "Tipo", "IL SUPER-FILTRO", "Qualità ⭐", "Prezzo ($)", "Var. Giornaliera", "Stato Mercato",
+        "ALERT BANDE", "Trend 7G", "Trend 30G", "VOLUME CHECK", "Bandwidth", "ATR",
         "FR vs SPY 7g", "FR vs SPY 30g", "FR vs SPY 90g",
         "FR vs ORO 7g", "FR vs ORO 30g", "FR vs ORO 90g",
         "FR vs USD 7g", "FR vs USD 30g", "FR vs USD 90g",
-        "Trend 200", "%B", "IL SUPER-FILTRO"
+        "Trend 200", "%B", "MMA 20"
     ]
     
     df_visualizzazione = df[colonne_finali]
@@ -282,6 +284,7 @@ if not df.empty:
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
         
+    # ABBIAMO IMPOSTATO WIDTH="SMALL" PER ENTRAMBI I MINI GRAFICI
     st.dataframe(
         df_visualizzazione.style.format(formati_percentuali)
                                 .map(color_text_red_green, subset=['Var. Giornaliera', 'FR vs SPY 7g', 'FR vs SPY 30g', 'FR vs SPY 90g', 'FR vs ORO 7g', 'FR vs ORO 30g', 'FR vs ORO 90g', 'FR vs USD 7g', 'FR vs USD 30g', 'FR vs USD 90g'])
@@ -291,7 +294,8 @@ if not df.empty:
                                 .map(colora_segnali_soft, subset=['IL SUPER-FILTRO'])
                                 .set_properties(**{'text-align': 'center'}),
         column_config={
-            "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="medium"),
+            "Trend 7G": st.column_config.LineChartColumn("Trend 7G", width="small"),
+            "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="small"),
         },
         use_container_width=True,
         height=850,
