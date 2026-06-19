@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Punteggio Qualità e Forza Relativa basati su Barre di Trading reali.")
+st.write("Sincronizzato eToro - Algoritmo di Forza Relativa a Rapporto identico al 100% al tuo Excel.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,36 +97,37 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- MOTORE DI CALCOLO STRUTTURATO A BARRE DI TRADING REALI ---
-def calcola_ritorno_barre(series, bars):
+# --- TRADUZIONE LETTERALE DELLA FORMULA EXCEL A RAPPORTO DI FORZA RELATIVA ---
+def calcola_fr_rapporto(etf_series, bench_series, bars):
     try:
-        if series is None or series.empty or len(series) <= bars: return 0
-        p_now = series.iloc[-1]
-        p_past = series.iloc[-(bars + 1)]
-        return (p_now / p_past) - 1 if p_past != 0 else 0
-    except: return 0
+        if len(etf_series) <= bars or len(bench_series) <= bars: return 0
+        etf_now = etf_series.iloc[-1]
+        etf_past = etf_series.iloc[-(bars + 1)]
+        
+        bench_now = bench_series.iloc[-1]
+        bench_past = bench_series.iloc[-(bars + 1)]
+        
+        if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
+        
+        # Questa è esattamente la tua formula: ((ETF_oggi / SPY_oggi) / (ETF_passato / SPY_passato)) - 1
+        return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
+    except:
+        return 0
 
 @st.cache_data(ttl=300)
 def elabora_radar(tickers, benchmarks):
     data_list = []
-    spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
-    
-    # Sincronizzazione benchmark su base barre operative (5=1sett, 21=1mese, 63=3mesi)
-    spy_7 = calcola_ritorno_barre(spy_s, 5)
-    spy_30 = calcola_ritorno_barre(spy_s, 21)
-    spy_90 = calcola_ritorno_barre(spy_s, 63)
-    
-    gld_7 = calcola_ritorno_barre(gld_s, 5)
-    gld_30 = calcola_ritorno_barre(gld_s, 21)
-    gld_90 = calcola_ritorno_barre(gld_s, 63)
-    
-    uup_7 = calcola_ritorno_barre(uup_s, 5)
-    uup_30 = calcola_ritorno_barre(uup_s, 21)
-    uup_90 = calcola_ritorno_barre(uup_s, 63)
-    
     ora_it = pd.Timestamp.now(tz='Europe/Rome')
     giorno_settimana = ora_it.dayofweek
     ora_decimale = ora_it.hour + ora_it.minute / 60.0
+    oggi_str = ora_it.strftime('%Y-%m-%d')
+    
+    spy_s, gld_s, uup_s = benchmarks.get("SPY"), benchmarks.get("GLD"), benchmarks.get("UUP")
+    
+    # Pulizia candela live odierna per mantenere il modello ancorato a ieri sera
+    spy_clean = spy_s.iloc[:-1] if not spy_s.empty and spy_s.index[-1].strftime('%Y-%m-%d') == oggi_str else spy_s
+    gld_clean = gld_s.iloc[:-1] if not gld_s.empty and gld_s.index[-1].strftime('%Y-%m-%d') == oggi_str else gld_s
+    uup_clean = uup_s.iloc[:-1] if not uup_s.empty and uup_s.index[-1].strftime('%Y-%m-%d') == oggi_str else uup_s
     
     for ticker_yahoo, info in tickers.items():
         try:
@@ -137,67 +138,66 @@ def elabora_radar(tickers, benchmarks):
             if hist.index.tz is not None:
                 hist.index = hist.index.tz_localize(None)
             
-            close_s = hist['Close'].dropna()
-            volume_s = hist['Volume']
-            high_s = hist['High']
-            low_s = hist['Low']
-            
-            prezzo_attuale = close_s.iloc[-1]
-            prezzo_ieri = close_s.iloc[-2]
+            prezzo_attuale = hist['Close'].dropna().iloc[-1]
+            prezzo_ieri = hist['Close'].dropna().iloc[-2]
             var_giornaliera = (prezzo_attuale - prezzo_ieri) / prezzo_ieri
             
-            # --- BANDE DI BOLLINGER & ALERT ---
-            sma20 = close_s.rolling(window=20).mean().iloc[-1]
-            std20 = close_s.rolling(window=20).std().iloc[-1]
+            if hist.index[-1].strftime('%Y-%m-%d') == oggi_str:
+                df_closed = hist.iloc[:-1]
+            else:
+                df_closed = hist
+                
+            close_closed = df_closed['Close'].dropna()
+            volume_closed = df_closed['Volume']
+            high_closed = df_closed['High']
+            low_closed = df_closed['Low']
+            prezzo_chiusura_ufficiale = close_closed.iloc[-1]
+            
+            # --- INDICATORI TECNICI ---
+            sma20 = close_closed.rolling(window=20).mean().iloc[-1]
+            std20 = close_closed.rolling(window=20).std().iloc[-1]
             if std20 == 0: continue
             bollinger_sup = sma20 + (2 * std20)
             bollinger_inf = sma20 - (2 * std20)
-            percent_b = (prezzo_attuale - bollinger_inf) / (bollinger_sup - bollinger_inf)
+            percent_b = (prezzo_chiusura_ufficiale - bollinger_inf) / (bollinger_sup - bollinger_inf)
             
-            if prezzo_attuale >= bollinger_sup: alert_bande = "💥 TOCCO SUP"
-            elif prezzo_attuale <= bollinger_inf: alert_bande = "💥 TOCCO INF"
-            else: alert_bande = "In range"
+            alert_bande = "💥 TOCCO SUP" if prezzo_chiusura_ufficiale >= bollinger_sup else ("💥 TOCCO INF" if prezzo_chiusura_ufficiale <= bollinger_inf else "In range")
             
-            # --- RSI SEMPLIFICATO (Z-SCORE EXCEL COLONNA M) ---
-            close_30 = close_s.tail(30)
-            media_30 = close_30.mean()
-            dev_st_30 = close_30.std()
-            rsi_semplificato = 50 + (10 * (prezzo_attuale - media_30) / dev_st_30) if dev_st_30 > 0 else 50
+            close_30 = close_closed.tail(30)
+            rsi_semplificato = 50 + (10 * (prezzo_chiusura_ufficiale - close_30.mean()) / close_30.std()) if close_30.std() > 0 else 50
             
-            # --- VOLATILITÀ ---
             bandwidth = (bollinger_sup - bollinger_inf) / sma20
-            prev_close = close_s.shift(1)
-            tr = pd.concat([high_s - low_s, (high_s - prev_close).abs(), (low_s - prev_close).abs()], axis=1).max(axis=1)
+            prev_close = close_closed.shift(1)
+            tr = pd.concat([high_closed - low_closed, (high_closed - prev_close).abs(), (low_closed - prev_close).abs()], axis=1).max(axis=1)
             atr = tr.rolling(window=14).mean().iloc[-1]
             
-            # --- VOLUME CHECK ---
-            vol_attuale = volume_s.iloc[-1]
-            vol_avg30 = volume_s.tail(30).mean()
-            vol_check = "✅ VOLUME ALTO" if vol_attuale > vol_avg30 else "⚠️ VOL. BASSO"
+            vol_check = "✅ VOLUME ALTO" if volume_closed.iloc[-1] > volume_closed.tail(30).mean() else "⚠️ VOL. BASSO"
+            trend_7g_list = close_closed.tail(7).tolist()
+            trend_30g_list = close_closed.tail(30).tolist()
             
-            # --- MINI GRAFICI ---
-            trend_7g_list = close_s.tail(7).tolist()
-            trend_30g_list = close_s.tail(30).tolist()
+            sma200 = close_closed.rolling(window=200).mean().iloc[-1]
+            trend_200 = "🐂 BULL" if prezzo_chiusura_ufficiale > sma200 else "🐻 BEAR"
             
-            # --- STATO MERCATO ---
-            sma200 = close_s.rolling(window=200).mean().iloc[-1]
-            trend_200 = "🐂 BULL" if prezzo_attuale > sma200 else "🐻 BEAR"
             if giorno_settimana >= 5: stato_mercato = "🔴 CHIUSO"
             else:
                 if any(ticker_yahoo.endswith(ext) for ext in [".L", ".PA", ".AS", ".DE"]):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- CALCOLO FORZA RELATIVA SU BASE BARRE SINCRONIZZATE ---
-            etf_7 = calcola_ritorno_barre(close_s, 5)
-            etf_30 = calcola_ritorno_barre(close_s, 21)
-            etf_90 = calcola_ritorno_barre(close_s, 63)
+            # --- APPLICAZIONE FORMULA A RAPPORTO SUI TRE ORIZZONTI ---
+            fr_spy_7  = calcola_fr_rapporto(close_closed, spy_clean, 5)
+            fr_spy_30 = calcola_fr_rapporto(close_closed, spy_clean, 21)
+            fr_spy_90 = calcola_fr_rapporto(close_closed, spy_clean, 63)
             
-            fr_spy_7, fr_spy_30, fr_spy_90 = etf_7 - spy_7, etf_30 - spy_30, etf_90 - spy_90
-            fr_gld_7, fr_gld_30, fr_gld_90 = etf_7 - gld_7, etf_30 - gld_30, etf_90 - gld_90
-            fr_uup_7, fr_uup_30, fr_uup_90 = etf_7 - uup_7, etf_30 - uup_30, etf_90 - uup_90
+            fr_gld_7  = calcola_fr_rapporto(close_closed, gld_clean, 5)
+            fr_gld_30 = calcola_fr_rapporto(close_closed, gld_clean, 21)
+            fr_gld_90 = calcola_fr_rapporto(close_closed, gld_clean, 63)
             
-            # MATRICE IPER-ALLINEATA ALLA FORMULA DEL TUO EXCEL DIVISO 10
+            fr_uup_7  = calcola_fr_rapporto(close_closed, uup_clean, 5)
+            fr_uup_30 = calcola_fr_rapporto(close_closed, uup_clean, 21)
+            fr_uup_90 = calcola_fr_rapporto(close_closed, uup_clean, 63)
+            
+            # ASSEGNAZIONE PUNTEGGI IDENTICA ALL'EXCEL DIVISO 10
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
             if fr_spy_30 > 0: qualita += 0.25
@@ -210,27 +210,13 @@ def elabora_radar(tickers, benchmarks):
             if fr_uup_90 > 0: qualita += 0.075
             
             data_list.append({
-                "Ticker": ticker_yahoo,
-                "Nome": info["Nome"],
-                "Tipo": info["Tipo"],
-                "IL SUPER-FILTRO": "", 
-                "Qualità ⭐": round(qualita, 3),
-                "Prezzo": round(prezzo_attuale, 2),
-                "Var. Giornaliera": var_giornaliera,
-                "Stato Mercato": stato_mercato,
-                "ALERT BANDE": alert_bande,
-                "Trend 7G": trend_7g_list,
-                "Trend 30G": trend_30g_list,
-                "Trend 200": trend_200,
-                "VOLUME CHECK": vol_check,
-                "Bandwidth": bandwidth,
-                "ATR": round(atr, 2),
+                "Ticker": ticker_yahoo, "Nome": info["Nome"], "Tipo": info["Tipo"], "IL SUPER-FILTRO": "", 
+                "Qualità ⭐": round(qualita, 3), "Prezzo": round(prezzo_attuale, 2), "Var. Giornaliera": var_giornaliera, "Stato Mercato": stato_mercato,
+                "ALERT BANDE": alert_bande, "Trend 7G": trend_7g_list, "Trend 30G": trend_30g_list, "Trend 200": trend_200, "VOLUME CHECK": vol_check, "Bandwidth": bandwidth, "ATR": round(atr, 2),
                 "FR vs SPY 7g": fr_spy_7, "FR vs SPY 30g": fr_spy_30, "FR vs SPY 90g": fr_spy_90,
                 "FR vs ORO 7g": fr_gld_7, "FR vs ORO 30g": fr_gld_30, "FR vs ORO 90g": fr_gld_90,
                 "FR vs USD 7g": fr_uup_7, "FR vs USD 30g": fr_uup_30, "FR vs USD 90g": fr_uup_90,
-                "RSI Semplificato": round(rsi_semplificato, 1),
-                "%B": round(percent_b, 2),
-                "MMA 20": round(sma20, 2)
+                "RSI Semplificato": round(rsi_semplificato, 1), "%B": round(percent_b, 2), "MMA 20": round(sma20, 2)
             })
         except: pass
     return pd.DataFrame(data_list)
@@ -239,12 +225,7 @@ benchmarks = scarica_benchmarks_sicuri()
 df = elabora_radar(TICKERS_CONFIG, benchmarks)
 
 def calcola_super_filtro(row):
-    c2 = row['Tipo']
-    q2 = row['%B']
-    u2 = row['Trend 200']
-    m2 = row['RSI Semplificato']
-    g2 = row['Qualità ⭐']
-    
+    c2, q2, u2, m2, g2 = row['Tipo'], row['%B'], row['Trend 200'], row['RSI Semplificato'], row['Qualità ⭐']
     if c2 == "CORE":
         if q2 < 0.45 and u2 == "🐂 BULL" and m2 > 40: return "🚀 VAI! (Pullback CORE)"
         elif q2 < 0.55 and m2 > 40: return "🤔 VALUTA (Osserva CORE)"
@@ -313,7 +294,6 @@ if not df.empty:
     ]
     
     df_visualizzazione = df[colonne_finali]
-    
     formati_percentuali = {"Qualità ⭐": "{:.0%}", "Var. Giornaliera": "{:+.2%}", "Bandwidth": "{:.1%}"}
     for col in colonne_finali:
         if "FR vs" in col: formati_percentuali[col] = "{:+.2%}"
@@ -330,9 +310,7 @@ if not df.empty:
             "Trend 7G": st.column_config.LineChartColumn("Trend 7G", width="small"),
             "Trend 30G": st.column_config.LineChartColumn("Trend 30G", width="small"),
         },
-        use_container_width=True,
-        height=650,
-        hide_index=True
+        use_container_width=True, height=650, hide_index=True
     )
 else:
     st.warning("Caricamento del tuo terminale quantitativo completo...")
