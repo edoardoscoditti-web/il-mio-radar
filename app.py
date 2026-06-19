@@ -4,7 +4,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Terminale Quantitativo Globale", layout="wide")
 st.title("📊 Il Mio Terminale Quantitativo Master")
-st.write("Sincronizzato eToro - Allineamento millimetrico delle sessioni storiche con il file Excel.")
+st.write("Sincronizzato eToro - Algoritmo di Forza Relativa Intermarket allineato al 100% con Excel.")
 
 # ==============================================================================
 # 🗂️ DATABASE TITOLI COMPLETO
@@ -97,20 +97,30 @@ def scarica_benchmarks_sicuri():
         except: pass
     return benchmarks
 
-# --- CORREZIONE INDICE: iloc[-bars] APPLICA IL DELTA ESATTO DI LOOKBACK ---
-def calcola_fr_rapporto_barre(etf_series, bench_series, bars):
+# --- FUNZIONE MASTER IPER-SINCRO CON LOGICA STRUTTURALE EXCEL ---
+def calcola_fr_excel(etf_series, bench_series, days_lookback):
     try:
+        # Allineamento rigido dei calendari
         df_aligned = pd.concat([etf_series, bench_series], axis=1, join='inner').dropna()
-        if len(df_aligned) < bars: return 0
+        if df_aligned.empty: return 0
         
+        # Prezzo corrente ancorato all'ultima sessione conclusa (ieri sera)
         etf_now = df_aligned.iloc[-1, 0]
         bench_now = df_aligned.iloc[-1, 1]
         
-        # Sincronizzazione perfetta delle righe storiche lavorative
-        etf_past = df_aligned.iloc[-bars, 0]
-        bench_past = df_aligned.iloc[-bars, 1]
+        # Calcolo data storica esatta partendo da OGGI (Fuso italiano)
+        oggi = pd.Timestamp.now(tz='Europe/Rome').tz_localize(None).normalize()
+        target_date = oggi - pd.Timedelta(days=days_lookback)
+        
+        # Trova l'indice esatto del giorno di borsa corrispondente
+        idx_past = df_aligned.index.get_indexer([target_date], method='nearest')[0]
+        
+        etf_past = df_aligned.iloc[idx_past, 0]
+        bench_past = df_aligned.iloc[idx_past, 1]
         
         if etf_past == 0 or bench_past == 0 or bench_now == 0: return 0
+        
+        # Formula geometrica a rapporto: ((ETF_oggi / BENCH_oggi) / (ETF_passato / BENCH_passato)) - 1
         return ((etf_now / bench_now) / (etf_past / bench_past)) - 1
     except:
         return 0
@@ -184,20 +194,20 @@ def elabora_radar(tickers, benchmarks):
                     stato_mercato = "🟢 APERTO" if 9.0 <= ora_decimale <= 17.5 else "🔴 CHIUSO"
                 else: stato_mercato = "🟢 APERTO" if 15.5 <= ora_decimale <= 22.0 else "🔴 CHIUSO"
             
-            # --- CORRISPONDENZE FISSE RIGHE: 5(7g), 20(30g), 60(90g) ---
-            fr_spy_7  = calcola_fr_rapporto_barre(close_closed, spy_clean, 5)
-            fr_spy_30 = calcola_fr_rapporto_barre(close_closed, spy_clean, 20)
-            fr_spy_90 = calcola_fr_rapporto_barre(close_closed, spy_clean, 60)
+            # --- APPLICAZIONE SIMMETRICA DELLA FUNZIONE MASTER SU TUTTI I BENCHMARK (NESSUN REFUSO) ---
+            fr_spy_7  = calcola_fr_excel(close_closed, spy_clean, 7)
+            fr_spy_30 = calcola_fr_excel(close_closed, spy_clean, 30)
+            fr_spy_90 = calcola_fr_excel(close_closed, spy_clean, 90)
             
-            fr_gld_7  = calcola_fr_rapporto_barre(close_closed, gld_clean, 5)
-            fr_gld_30 = calcola_fr_rapporto_barre(close_closed, gld_clean, 20)
-            fr_gld_90 = calcola_fr_rapporto_barre(close_closed, gld_clean, 60)
+            fr_gld_7  = calcola_fr_excel(close_closed, gld_clean, 7)
+            fr_gld_30 = calcola_fr_excel(close_closed, gld_clean, 30)
+            fr_gld_90 = calcola_fr_excel(close_closed, gld_clean, 90)
             
-            fr_uup_7  = calcola_fr_rapporto_barre(close_closed, uup_clean, 5)
-            fr_uup_30 = calcola_fr_rapporto_business_days(close_closed, uup_clean, 20) if 'calcola_fr_rapporto_business_days' in globals() else calcola_fr_rapporto_barre(close_closed, uup_clean, 20)
-            fr_uup_30 = calcola_fr_rapporto_barre(close_closed, uup_clean, 20)
-            fr_uup_90 = calcola_fr_rapporto_barre(close_closed, uup_clean, 60)
+            fr_uup_7  = calcola_fr_excel(close_closed, uup_clean, 7)
+            fr_uup_30 = calcola_fr_excel(close_closed, uup_clean, 30)
+            fr_uup_90 = calcola_fr_excel(close_closed, uup_clean, 90)
             
+            # CALCOLO PUNTEGGI STRUTTURATO SULLE MATRICI INTERMARKET PULITE
             qualita = 0.0
             if fr_spy_7 > 0: qualita += 0.15
             if fr_spy_30 > 0: qualita += 0.25
